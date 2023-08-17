@@ -53,11 +53,9 @@ class ratio_map(Astro_Image):
     def calculate_density(self, data, x_beg, x_end, popt):
         vals = np.zeros((len(data), len(data[0])), dtype = float)
         vals[vals==0.] = np.nan
-        for x in range(0, len(data[0])):
-            for y in range(0, len(data)):
-                vals[y][x] = brentq(funcs.get_poly_function_min_yval(len(popt)-1), x_beg, x_end, args = (*popt, data[y][x])) ## len(popt)-1 gives order of the polynomial
-                vals[vals<x_beg] = np.nan
-                vals[vals>x_end] = np.nan
+        indices = np.where(~np.isnan(data))
+        for x, y in zip(indices[1], indices[0]):
+            vals[y][x] = brentq(funcs.get_poly_function_min_yval(len(popt)-1), x_beg, x_end, args = (*popt, data[y][x]))
             
         return vals
     
@@ -176,7 +174,74 @@ class ratio_map(Astro_Image):
         
         return x_curve, curve_vals
     
-    #### Major functions that return a density map ####
+    ## remove all the values from a copy of a ratio map outside a given value range (< min_rat, > max_rat)
+    def __get_ratio_map_copy_range_cut(self, min_rat, max_rat, ratio_copy):
+        ratio_copy[ratio_copy<min_rat] = np.nan
+        ratio_copy[ratio_copy>max_rat] = np.nan
+        
+        return ratio_copy
+    
+    ## remove all the values from a copy of a ratio map based on the upper and lower value of a curve
+    def __get_min_max_from_fitted_ratio_curve(self, curve_vals):
+        min_rat = np.nanmin(curve_vals); max_rat = np.nanmax(curve_vals)
+        #print("The minimal ratio that allows a solution for the give input is: " + str(np.round(min_rat,2)))
+        #print("The maximal ratio that allows a solution for the give input is: " + str(np.round(max_rat,2)))
+        
+        return min_rat, max_rat
+    
+    ## calculate the density in each pixel of the given copy of the ratio map for which a density can be calculated
+    def get_density_in_pixels_from_curve_fitting(self, ratio_copy, df, poly_order, mol, line_1, line_2, run_num = 0, num_verify_ratio_fit = 20, save_path=None):
+            popt, pcov = self.fit_poly_density_to_DataFrame(df, poly_order)
+            x_curve, curve_vals = self.get_curve_vals(df, popt)
+            if(run_num%num_verify_ratio_fit == 0):
+                plfunc.plot_two_arrays_and_curve(df["nH2"], df["T_ratio"], x_curve, curve_vals, 'n$_{H_{2}}$', mol+'('+line_1+')/'+mol+'('+line_2+')', save_path = save_path)
+        
+            ## Clean the ratio map so that the density can be calculated in every pixel
+            min_rat, max_rat = self.__get_min_max_from_fitted_ratio_curve(curve_vals)
+            ratio_copy = self.__get_ratio_map_copy_range_cut(min_rat, max_rat, ratio_copy)
+        
+            ## calculate the density for each pixel in the map using the brentq method
+            n_beg = x_curve[np.where(curve_vals == min_rat)[0]]
+            n_end = x_curve[np.where(curve_vals == max_rat)[0]]
+            log_dens_map = self.calculate_density(ratio_copy, n_beg, n_end, popt)
+            
+            return log_dens_map
+    
+    ## sort the paths appropriately
+    def __get_sorted_paths(self, line_1, line_2, paths):
+        val_1 = int(line_1.split('-')[0])
+        val_2 = int(line_2.split('-')[0])
+        paths.sort()
+        if(val_1 > val_2):
+            paths.sort(reverse = True)
+        
+        return paths
+    
+    ## plot the deviation of the nearest map with respect to the original map
+    def plot_deviation(self, diff_map, im_original, label_1, label_2):
+        rel_diff = np.abs(100.*diff_map/im_original.astro_image)
+        
+        im_diff = Astro_Image(diff_map, self.header)
+        im_diff.plot_image(label_1)
+        im_rel_diff = Astro_Image(rel_diff, self.header)
+        im_rel_diff.plot_image(label_2)
+     
+    ## store density map into an image
+    def dens_map_to_image(self, log_dens_map, log_bool):
+        ## adapt the unit based on the data that will be saved
+        bunit = "log[n$_{H_{2}}$ (cm$^{-3}$)]"
+        if(log_bool == False):
+            log_dens_map = 10**log_dens_map
+            bunit = "n$_{H_{2}}$ (cm$^{-3}$)"
+        
+        ## store the density map as an Astro_Image, first adapt header
+        header_density = self.header.copy()
+        header_density['BUNIT'] = bunit
+        density_map_image = Astro_Image(log_dens_map, header = header_density)
+        
+        return density_map_image, bunit
+    
+    #### Public functions that can be called to return a density map ####
     
     ## calculate the density over the map for a single molecular column density, kinetic temperature and fwhm
     def get_density_ratio_single_temperature(self, mol, line_1, line_2, mol_col_dens, t_kin, fwhm, poly_order=2, log_bool=True, save_path_hist = None, save_path_ratio = None):
@@ -191,52 +256,26 @@ class ratio_map(Astro_Image):
         ## create new data frame with the ratio
         df_3 = self.create_ratio_dataframe(df_1, df_2)
         
-        ## fit polynomial to the ratio as a function of density, get the fitted curve and plot the result
-        popt, pcov = self.fit_poly_density_to_DataFrame(df_3, poly_order)
-        x_curve, curve_vals = self.get_curve_vals(df_3, popt)
-        plfunc.plot_two_arrays_and_curve(df_3["nH2"], df_3["T_ratio"], x_curve, curve_vals, 'n$_{H_{2}}$', mol+'('+line_1+')/'+mol+'('+line_2+')', save_path = save_path_ratio)
-        
-        ## Clean the ratio map so that the density can be calculated in every pixel
-        min_rat = np.nanmin(curve_vals)
-        max_rat = np.nanmax(curve_vals)
-        print("The minimal ratio that allows a solution for the give input is: " + str(np.round(min_rat,2)))
-        print("The maximal ratio that allows a solution for the give input is: " + str(np.round(max_rat,2)))
+        ## create a copy of the ratio map
         ratio_copy = self.astro_image.copy()
-        ratio_copy[ratio_copy<min_rat] = np.nan
-        ratio_copy[ratio_copy>max_rat] = np.nan
         
-        ## calculate the density for each pixel in the map using the brentq method
-        n_beg = x_curve[np.where(curve_vals == min_rat)[0]]
-        n_end = x_curve[np.where(curve_vals == max_rat)[0]]
-        log_dens_map = self.calculate_density(ratio_copy, n_beg, n_end, popt)
-        bunit = "log[n$_{H_{2}}$ (cm$^{-3}$)]"
-        if(log_bool == False):
-            log_dens_map = 10**log_dens_map
-            bunit = "n$_{H_{2}}$ (cm$^{-3}$)"
+        ## fit polynomial to the ratio as a function of density, get the fitted curve and plot the result
+        log_dens_map = self.get_density_in_pixels_from_curve_fitting(ratio_copy, df_3, poly_order, mol, line_1, line_2, save_path=save_path_ratio)
         
-        ## store the density map as an Astro_Image, first adapt header
-        header_density = self.header.copy()
-        header_density['BUNIT'] = bunit
-        density_map_image = Astro_Image(log_dens_map, header = header_density)
+        ## create an Astro_Image version of the density map
+        density_map_image, bunit = self.dens_map_to_image(log_dens_map, log_bool)
         
         ## plot histogram of the density distribution
-        plfunc.plot_histogram(log_dens_map.ravel(), bunit, xscale_log = not log_bool, save_path = save_path_hist)
+        plfunc.plot_histogram(density_map_image.astro_image.ravel(), bunit, xscale_log = not log_bool, save_path = save_path_hist)
         
         return density_map_image
     
     
-    
-    ## plot the deviation of the nearest map with respect to the original map
-    def plot_deviation(self, diff_map, im_original, label_1, label_2):
-        rel_diff = np.abs(100.*diff_map/im_original.astro_image)
-        
-        im_diff = Astro_Image(diff_map, self.header)
-        im_diff.plot_image(label_1)
-        im_rel_diff = Astro_Image(rel_diff, self.header)
-        im_rel_diff.plot_image(label_2)
-    
     ## calculate the density over the map for a given fwhm, while the temperature and column density map are given
-    def get_density_ratio_from_colDens(self, mol, line_1, line_2, fwhm, im_colDens, im_Tdust, grid_path, poly_order=2, verify_deviation = True, log_bool=True, save_path_hist = None, save_path_ratio = None):
+    def get_density_ratio_from_colDens(self, mol, line_1, line_2, fwhm, im_colDens, im_Tdust, grid_path, Tdust_corr = 0, poly_order=2, verify_deviation = True, log_bool=True, save_path_hist = None, save_path_ratio = None, num_verify_ratio_fit = 20):
+        ## create a map where density results will be stored
+        log_dens_map = np.zeros((len(self.astro_image),len(self.astro_image[0])), dtype = float)
+        log_dens_map[log_dens_map == 0] = np.nan
         
         ## get a list of the available column densities in a given directory
         colDens_list, file_names_dict = self.get_colDens_list_from_files(grid_path)
@@ -244,15 +283,17 @@ class ratio_map(Astro_Image):
         ## get the temperature options of the grid
         Tkin_list = self.get_Tkin_list_from_directories(file_names_dict)
         
+        ## create a temperature corrected imTdust
+        im_Tdust_corr = Astro_Image(im_Tdust.astro_image + Tdust_corr, im_Tdust.header)
+        
         ## get a 'RADEX' Tkin and column density map from the real map
         colDens_nearest, colDens_diff = self.get_nearest_map(im_colDens.astro_image, colDens_list)
-        Tkin_nearest, Tkin_diff = self.get_nearest_map(im_Tdust.astro_image, Tkin_list)
-        # ADD IN CORRECTION FOR TKIN
+        Tkin_nearest, Tkin_diff = self.get_nearest_map(im_Tdust_corr.astro_image, Tkin_list)
         
         ## verify the relative deviations for the temperature and column density
         if(verify_deviation):
             self.plot_deviation(colDens_diff, im_colDens, '$\Delta$ N (cm$^{-2}$)', r'$\frac{\Delta N}{N}$ (%)')
-            self.plot_deviation(Tkin_diff, im_Tdust, '$\Delta$ T (K)', r'$\frac{\Delta T}{T}$ (%)')
+            self.plot_deviation(Tkin_diff, im_Tdust_corr, '$\Delta$ T (K)', r'$\frac{\Delta T}{T}$ (%)')
         
         ## loop over list of column densities and temperatures to fill up the density map
         for i, colDens in enumerate(colDens_list):
@@ -260,12 +301,9 @@ class ratio_map(Astro_Image):
             mask = np.zeros((len(colDens_nearest),len(colDens_nearest[0])), dtype = int)
             mask[colDens_nearest == colDens] = 1
             
-            ## get the paths of the files
+            ## get the paths of the files and sort the file_paths to avoid inversing the ratio (+ it shows the column density being handled)
             file_paths = file_names_dict[colDens]
-            
-            ## sort the file_paths to avoid inversing the ratio (+ it shows the column density being handled)
-            file_paths.sort()
-            print(file_paths)
+            file_paths = self.__get_sorted_paths(line_1, line_2, file_paths)
             
             ## read both files into a DataFrame and verify they are consistent
             df_1 = self.read_file_into_dataframe(file_paths[0], ["Tkin","nH2","Tmb"])
@@ -274,32 +312,43 @@ class ratio_map(Astro_Image):
             
             ## create new data frame with the ratio
             df_3 = self.create_ratio_dataframe(df_1, df_2)
-            #print(df_3)
             
             for j, Tkin in enumerate(Tkin_list):
                 ## add temperature to mask and apply it to a copy of the ratio map
-                mask[Tkin_nearest != Tkin] = 0
+                mask_1 = mask.copy()
+                mask_1[Tkin_nearest != Tkin] = 0
                 ratio_copy = self.astro_image.copy()
-                ratio_copy[mask == 0] = np.nan
+                ratio_copy[mask_1 == 0] = np.nan
                 
                 ## select only the relevant temperature out of the DataFrame
                 df_4 = df_3[df_3["Tkin"] == Tkin]
                 df_4 = df_4.reset_index()
                 
-                ## fit the ratio as a function of density
-                popt, pcov = self.fit_poly_density_to_DataFrame(df_4, poly_order)
-                x_curve, curve_vals = self.get_curve_vals(df_4, popt)
-                # CONTINUE HERE: VISUALIZE FIT ONLY FOR EVERY 10 FITS? MAKE FLEXIBLE
-                #if(j%10 == 0):  PROVIDE INPUT NUMBER
+                log_dens_map_local = self.get_density_in_pixels_from_curve_fitting(ratio_copy, df_4, poly_order, mol, line_1, line_2, run_num = j, num_verify_ratio_fit = num_verify_ratio_fit, save_path=save_path_ratio)
                 
+                ## store results in log_dens_map
+                indices = np.where(~np.isnan(log_dens_map_local))
+                for x, y in zip(indices[1], indices[0]):
+                    log_dens_map[y][x] = log_dens_map_local[y][x]
                 
+        ## create an Astro_Image version of the density map
+        density_map_image, bunit = self.dens_map_to_image(log_dens_map, log_bool)
+        
+        ## plot histogram of the density distribution
+        plfunc.plot_histogram(density_map_image.astro_image.ravel(), bunit, xscale_log = not log_bool, save_path = save_path_hist)
+        
+        return density_map_image
+    
+    
     
     ## calculate the density over the map for a given fwhm, while the temperature is given and the column density map of the molecule is derived from a column density map and a relative molecular abundance
-    def get_density_ratio_from_colDens_and_abundance(self, mol, line_1, line_2, fwhm, mol_abundance, im_colDens, im_Tdust, grid_path, poly_order=2, verify_deviation = True, log_bool=True, save_path_hist = None, save_path_ratio = None):
+    def get_density_ratio_from_colDens_and_abundance(self, mol, line_1, line_2, fwhm, mol_abundance, im_colDens, im_Tdust, grid_path, Tdust_corr = 0, poly_order=2, verify_deviation = True, log_bool=True, save_path_hist = None, save_path_ratio = None, num_verify_ratio_fit = 20):
         ## create the image of the molecule column density map
         im_mol_colDens = im_colDens.get_mol_colDens(mol_abundance)
         
-        self.get_density_ratio_from_colDens(mol, line_1, line_2, fwhm, im_mol_colDens, im_Tdust, grid_path, poly_order = poly_order, verify_deviation = verify_deviation, log_bool=log_bool, save_path_hist = save_path_hist, save_path_ratio = save_path_ratio)
+        density_map_image = self.get_density_ratio_from_colDens(mol, line_1, line_2, fwhm, im_mol_colDens, im_Tdust, grid_path, Tdust_corr = Tdust_corr, poly_order = poly_order, verify_deviation = verify_deviation, log_bool=log_bool, save_path_hist = save_path_hist, save_path_ratio = save_path_ratio)
+        
+        return density_map_image
         
 
 
