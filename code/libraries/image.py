@@ -22,23 +22,11 @@ class Astro_Image():
         self.w = None
         self.header = header
         if(self.header is not None):
-            self.w = wcs.WCS(self.header)    
-        #print(self.w)
+            self.w = wcs.WCS(self.header)
+            
+    #### PUBLIC FUNCTIONS ####
     
-    #### plotting functions for an image ####
-    
-    ## set image data values to nan based on mask
-    def mask_values(self, mask):
-        self.astro_image[mask==1] = np.nan
-    
-    ## A function to create contour levels if none were specified (standard: creates 5 contours)
-    def create_linear_contour_levels(self, min_val, max_val, num_conts = 5):
-        step = (1./float(num_conts))*(max_val - min_val)
-        levs = [min_val + i*step for i in range(0,num_conts)]
-        wids = [0.6 for lev in levs]
-        
-        return levs, wids
-        
+    #### public plotting functions for an image ####
     
     ## plotting of the image
     def plot_image(self, label, contour_hdu = None, min_val = None, max_val = None, levs_cont = None, wids_cont = None, plot_lims = None, save_path = None):
@@ -70,6 +58,7 @@ class Astro_Image():
             plt.savefig(save_path, dpi=300)
         
         plt.show()
+    
     
     #### other functions for an astro image ####
     
@@ -113,6 +102,18 @@ class Astro_Image():
         return_image = Astro_Image(image_rep, target_header)
         
         return return_image
+    
+    ## set image data values to nan based on mask
+    def mask_values(self, mask):
+        self.astro_image[mask==1] = np.nan
+    
+    ## A function to create contour levels if none were specified (standard: creates 5 contours)
+    def create_linear_contour_levels(self, min_val, max_val, num_conts = 5):
+        step = (1./float(num_conts))*(max_val - min_val)
+        levs = [min_val + i*step for i in range(0,num_conts)]
+        wids = [0.6 for lev in levs]
+        
+        return levs, wids
 
 
         
@@ -130,6 +131,8 @@ class ColDens_Image(Astro_Image):
     def __init__(self, image, header = None):
         Astro_Image.__init__(self, image, header = header)
     
+    
+    #### PUBLIC FUNCTIONS ####
     
     #### functions to operate on the column density image ####
     
@@ -152,7 +155,9 @@ class ColDens_Image(Astro_Image):
     def histogram_mol_colDens(self, rel_mol_abundance, bunit, log_xscale_bool = False):
         colDens_rel = self.astro_image*rel_mol_abundance
         plfunc.plot_histogram(colDens_rel.ravel(), bunit, xscale_log = log_xscale_bool)
-        
+    
+    
+    
     #### override functions ####
     
     ## override the reproject image class to return a ColDens_Image object
