@@ -26,7 +26,7 @@ import functions as funcs
 percentile_print = 10.
 
 ## Create a map of ratios from maps that cover the same area and have the same size
-## uncs is a list
+## rel_uncs is a list
 class ratio_map(Astro_Image):
     
     def __init__(self, data1, data2, header = None, rel_uncs = None):

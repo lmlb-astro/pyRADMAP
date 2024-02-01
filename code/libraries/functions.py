@@ -2,6 +2,12 @@ import numpy as np
 import sys
 import matplotlib.pyplot as plt
 
+#######################################
+## Definitions of mathematical functions
+## -> Gaussian functions (Up to 3 Gaussians)
+## -> Polynomial functions (Up to 4th Order)
+#######################################
+
 #### DEFINITIONS TO FIT GAUSSIANS #####
 
 ## the 1d gaussian for fitting (x0: central velocity, sigma: width)
@@ -27,6 +33,8 @@ def getGaussianFunction(func,x,inputVals):
 		return [func(xi,inputVals[0],inputVals[1],inputVals[2],inputVals[3],inputVals[4],inputVals[5],inputVals[6],inputVals[7],inputVals[8]) for xi in x]
 	else:
 		sys.exit('You asked for a guassian that does not exist, so the program can not continue')
+
+################################################
 
 
 #### DEFINITIONS TO FIT POLYNOMIAL FUNCTIONS #####
@@ -69,7 +77,10 @@ def get_poly_function_min_yval(order):
         return fourth_ord_poly_min_yval
     else:
         print("Could not find the requested polynomial function")
-        
+
+####################################################
+
+
 #### PLOTTING ####
 
 ## plots the components of the double and triple gaussians
