@@ -26,17 +26,17 @@ class RADEX_Fitting():
     ########
     
     ## verify that the grid path contains data for all provided files
-    def verify_molecular_data_in_grid(self, grid_path, mol_name, transitions):
+    def verify_molecular_data_in_grid(self, transitions, sorted_file_list):
         all_in_grid = False
         
         ## get the list of files for the grid
-        file_list = self.get_sorted_list_of_radex_files_for_molecule_in_directory(grid_path, mol_name)
+        #file_list = self.get_sorted_list_of_radex_files_for_molecule_in_directory(grid_path, mol_name)
         
         ## verify the molecule and the available lines in the data
         tr_copy = transitions.copy()
         len_temp_list = 0
         for i, tr in enumerate(transitions):
-            temp_list = [f for f in file_list if f.split('_')[1] == tr]
+            temp_list = [f for f in sorted_file_list if f.split('_')[1] == tr]
             if(len(temp_list) != 0):
                 if(i == 0):
                     len_temp_list = len(temp_list)
@@ -78,10 +78,10 @@ class RADEX_Fitting():
     #######
     
     ## perform a full verification that it will be able to derive the physical quantities for the chosen fitting option
-    def _run_verification(self, grid_path, im_list_mol, Tkin, Nmol):
+    def _run_verification(self, im_list_mol, Tkin, Nmol, sorted_file_list):
         
         ## verify that the grid path contains data for all provided files
-        verification_grid = self.verify_molecular_data_in_grid(grid_path, im_list_mol.mol_name, im_list_mol.transitions)
+        verification_grid = self.verify_molecular_data_in_grid(im_list_mol.transitions, sorted_file_list)
         if(verification_grid == False):
             raise ValueError("The provided path does not possess all the necessary data. Be sure to verify the files in the provided path.")
         else:

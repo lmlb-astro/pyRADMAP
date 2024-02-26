@@ -245,12 +245,11 @@ class Regressor(RADEX_Fitting):
     
     ## function to get the training and testing data for a model
     def __get_train_test_data(self, grid_path, im_list_mol, Tkin, Nmol, test_perc):
-        ## Perform a full verification that the Regressor can create a model
-        self._run_verification(grid_path, im_list_mol, Tkin, Nmol) 
-        
         ## get the sorted list of RADEX files
         sorted_file_list = self.get_sorted_list_of_radex_files_for_molecule_in_directory(grid_path, im_list_mol.mol_name)
-        # USE SORTED FILE LIST ALREADY IN RUN VERIFICATION: AVOID DOUBLE WORK
+        
+        ## Perform a full verification that the Regressor can create a model
+        self._run_verification(im_list_mol, Tkin, Nmol, sorted_file_list) 
         
         ## verify that provided Nmol and Tkin are available in the grid path
         bool_Nmol, bool_Tkin = self._verify_Tkin_Nmol(grid_path, sorted_file_list, Tkin, Nmol)
