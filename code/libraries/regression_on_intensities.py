@@ -72,7 +72,7 @@ class Regressor(RADEX_Fitting):
     ## create a model prediction based on a provided grid path
     ## Currently available quantities: "log$_{10}$(n$_{H2}$)","Nmol" and "Tkin"
     ## grid_path: path to the directory
-    ## Nmol and Tkin must be a list of floats, MAKE EXTENSION WITH NP.NDARRAY
+    ## Nmol and Tkin must be a list of floats
     def create_dens_SVRregression_model_for_molecule(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30.):
         ## get the training and testing data after verification that fitting can be done
         Xs_train, Ys_train, Xs_test, Ys_test = self.__get_train_test_data(grid_path, im_list_mol, Tkin, Nmol, test_perc)
@@ -85,7 +85,7 @@ class Regressor(RADEX_Fitting):
         svr = SVR(kernel = kernel_svr, C = C_svr, gamma = gamma_svr, degree = degree_svr, epsilon = epsilon_svr, coef0 = coef0_svr)
         for ys in Ys_train:
             self.models.append(svr.fit(Xs_train, ys))
-            self.fitted_quantities.append("log$_{10}$(n$_{H2}$)") # ALLOW THIS TO INCLUDE NMOL AND TKIN
+            self.fitted_quantities.append("log$_{10}$(n$_{H2}$)")
         
         ## verify the regression result 
         self.__verify_regression(plot_verify_fitting, Xs_test, Ys_test)
@@ -145,15 +145,13 @@ class Regressor(RADEX_Fitting):
         ## get the data
         Xs = None
         Ys = None
-        # CONSIDER IF GET DENSITY FEATURES CAN BE GENERALIZED
         if((Tkin is not None) and (Nmol is not None)):
-            Xs, Ys = self.__get_density_features(grid_path, sorted_file_list, Tkin, Nmol, transitions)
+            Xs, Ys = self.__get_density_features(grid_path, sorted_file_list, [Tkin], [Nmol], transitions)
+            print(Xs)
+            print(Ys)
         
         ## verify that plausible value is given for test_perc
-        if(test_perc >= 100.):
-            raise ValueError("The test percentage has to be in the range [0., 100.)")
-        elif(test_perc > 50.):
-            print("Be aware that with the current input you are using more than half of your data to test the model")
+        self.__check_test_perc(test_perc)
         
         ## split the data in training and testing data
         if(test_perc > 0.):
@@ -177,28 +175,101 @@ class Regressor(RADEX_Fitting):
     
     
     
-    ## returns input data for the regressor if only fitting the density
+    
+    ## function that verifies that the fraction of data points used for testing is valid
+    def __check_test_perc(self, test_perc):
+        if(test_perc >= 100.):
+            raise ValueError("The test percentage has to be in the range [0., 100.)")
+        elif(test_perc > 50.):
+            print("Be aware that with the current input you are using more than half of your data to test the model")
+    
+    
+    #### UPDATE OF READING INPUT DATA FOR FITTING ####
+    
+    # MOVE ALL OF THIS READING THE INPUT DATA TO THE RADEX FITTING CLASS?
+    
+    ## Returns a hashmap that connects the float column density value to the string value in the file names
+    def __get_Nmol_dict(self, sorted_file_list):
+        ## initiate the hashmap
+        Nmol_dict = dict()
+        
+        ## loop over all the files
+        for file in sorted_file_list:
+            ## get the column density value
+            result = file.split('_')
+            Nmol = result[2].replace('.dat','')
+            Nmol_fl = self._get_Nmol_float(Nmol)
+            
+            ## update the hash map
+            if(Nmol_fl not in Nmol_dict):
+                Nmol_dict[Nmol_fl] = Nmol
+        
+        return Nmol_dict
+    
+    
+    ## Function that verifies that all Tkin values in a list are found in the "Tkin" column of a DataFrame
+    ## Raises an error if a given temperature is not found in the DataFrame
+    def __verify_Tkin_prensence(self, df, Tkins):
+        ## loop over the Tkins
+        for Tkin in Tkins:
+            if(Tkin not in df['Tkin'].values):
+                raise ValueError("The temperature {Tkin} K is not in the RADEX output file.".format(Tkin = Tkin))
+    
+    
+    
+    
+    ## returns input data for the regressor if only fitting the density based on a single molecule
+    ## sorted_file_list only contains files with the give molecule
     ## returns y values in the form of a list with one element
-    def __get_density_features(self, grid_path, sorted_file_list, Tkin, Nmol, transitions):
+    def __get_density_features(self, grid_path, sorted_file_list, Tkins, Nmols, transitions):
+        ## initiate return list
         xs_list = []
         ys_arr = None
         
-        ## loop over files to find the transitions and Nmol to extract the Tkin
-        for file in sorted_file_list:
-            result = file.split('_')
-            NmF = self._get_Nmol_float(result[2].replace('.dat',''))
-            if((result[1] in transitions) and (NmF == Nmol)):
-                df = self.read_RADEX_file_into_dataframe(grid_path+file)
-                df = df[df["Tkin"] == Tkin]
-                if(ys_arr is None):
-                    ys_arr = np.array(df["log$_{10}$(n$_{H2}$)"].values)
-                xs_list.append(np.array(df["Tmb"].values))
+        ## initiate the name of the molecule
+        mol_name = sorted_file_list[0].split('_')[0]
+        
+        ## create a dictionary (or hashmap) that connects the float to string values for all column density values in the sorted_file_list
+        Nmol_dict = self.__get_Nmol_dict(sorted_file_list)
+        
+        ## loop over each transition necessary
+        for tr in transitions:
+            print(tr)
+            ## temporary storage for each transition
+            xs_temp, ys_temp = [], []
+            
+            ## loop over each necessary column density
+            for Nmol in Nmols:
+                ## get Nmol in string format
+                Nmol_str = Nmol_dict[Nmol]
+                
+                ## create the file name
+                file_name = '{mol}_{tr}_{nm}.dat'.format(mol = mol_name, tr = tr, nm = Nmol_str)
+                
+                ## read the data file (if the file does not exist, this is handled in the read_RADEX_... function)
+                df = self.read_RADEX_file_into_dataframe(grid_path+file_name)
+                
+                ## verify that all Tkin values of interest are contained in the data files
+                self.__verify_Tkin_prensence(df, Tkins)
+                
+                ## select the rows with Tkin values that are present in Tkins
+                df = df.loc[df['Tkin'].isin(Tkins)]
+                
+                ## append the data points of interest to the x_list and ys_arr
+                xs_temp.append(np.array(df["Tmb"].values))
+                ys_temp.append(np.array(df["log$_{10}$(n$_{H2}$)"].values))
+                
+            ## ravel the temp arrays and add them to the return arrays
+            xs_list.append(np.array(xs_temp).ravel())
+            if ys_arr is None:  ## only add it when the Ys have not been stored yet. (multiple transitions -> one density)
+                ys_arr = np.array(ys_temp).ravel()
+            
                 
         ## convert xs_list into a numpy array
         xs_arr = np.array(xs_list).transpose()
         
         return xs_arr, np.array([ys_arr])
-        
+    
     
     
     ## store the outputs into an HDU list to return
@@ -245,16 +316,8 @@ class Regressor(RADEX_Fitting):
     
     ## function to get the training and testing data for a model
     def __get_train_test_data(self, grid_path, im_list_mol, Tkin, Nmol, test_perc):
-        ## get the sorted list of RADEX files
+        ## get the sorted list of RADEX files for a given molecule
         sorted_file_list = self.get_sorted_list_of_radex_files_for_molecule_in_directory(grid_path, im_list_mol.mol_name)
-        
-        ## Perform a full verification that the Regressor can create a model
-        self._run_verification(im_list_mol, Tkin, Nmol, sorted_file_list) 
-        
-        ## verify that provided Nmol and Tkin are available in the grid path
-        bool_Nmol, bool_Tkin = self._verify_Tkin_Nmol(grid_path, sorted_file_list, Tkin, Nmol)
-        if(bool_Nmol == False or bool_Tkin == False):
-            raise ValueError("The value provided for Nmol or Tkin cannot be found in the grid path.")
         
         ## read the data to train the regression model
         print("Reading data input")
