@@ -10,7 +10,7 @@ import astropy.wcs as wcs
 #### PLOTTING OF ARRAYS ####
 
 ## plot two arrays
-def plot_two_arrays(arr1, arr2, label_x, label_y, save_path = None, plot_code = 'ro'):
+def plot_two_arrays(arr1, arr2, label_x, label_y, save_path = None, plot_code = 'ro', dpi = 300):
     fig, ax = plt.subplots()
     
     ax.plot(arr1, arr2, plot_code)
@@ -19,13 +19,13 @@ def plot_two_arrays(arr1, arr2, label_x, label_y, save_path = None, plot_code = 
     ax.set_ylabel(label_y)
     
     if(save_path is not None):
-        plt.savefig(save_path, dpi=300)
+        plt.savefig(save_path, dpi = dpi)
     
     plt.show()
 
 
 ## plot two arrays as well as a function
-def plot_two_arrays_and_curve(arr1, arr2, x_curve, y_curve, label_x, label_y, save_path = None, plot_code = 'ro'):
+def plot_two_arrays_and_curve(arr1, arr2, x_curve, y_curve, label_x, label_y, save_path = None, plot_code = 'ro', dpi = 300):
     fig, ax = plt.subplots()
     
     ax.plot(arr1, arr2, plot_code)
@@ -35,7 +35,7 @@ def plot_two_arrays_and_curve(arr1, arr2, x_curve, y_curve, label_x, label_y, sa
     ax.set_ylabel(label_y)
     
     if(save_path is not None):
-        plt.savefig(save_path, dpi=300)
+        plt.savefig(save_path, dpi = dpi)
     
     plt.show()
 
@@ -44,7 +44,7 @@ def plot_two_arrays_and_curve(arr1, arr2, x_curve, y_curve, label_x, label_y, sa
 #### PLOTTING RELATED TO HISTOGRAMS ####
 
 ## plot a simple histogram ##
-def plot_histogram(arr, label_x, num_bins = None, xscale_log = False, save_path = None):
+def plot_histogram(arr, label_x, num_bins = None, xscale_log = False, save_path = None, dpi = 300):
     if(num_bins == None):
         num_bins = int(np.sqrt(len(arr))+1)
     hist, bins, _ = plt.hist(arr, bins=num_bins)
@@ -59,7 +59,7 @@ def plot_histogram(arr, label_x, num_bins = None, xscale_log = False, save_path 
     plt.ylabel("count")
     
     if(save_path is not None):
-        plt.savefig(save_path, dpi=300)
+        plt.savefig(save_path, dpi = dpi)
     
     plt.show()
 
@@ -78,7 +78,7 @@ def create_linear_contour_levels(self, min_val, max_val, num_conts = 5):
 
 ## plotting of the first hdu in a HDUList
 ## plot_image
-def plot_hdu(hdu, label, contour_hdu = None, min_val = None, max_val = None, levs_cont = None, wids_cont = None, plot_lims = None, save_path = None):
+def plot_hdu(hdu, label, contour_hdu = None, min_val = None, max_val = None, levs_cont = None, wids_cont = None, plot_lims = None, save_path = None, dpi = 300):
     ## get the information from the hdu
     data = hdu[0].data
     w = wcs.WCS(hdu[0].header)
@@ -107,7 +107,7 @@ def plot_hdu(hdu, label, contour_hdu = None, min_val = None, max_val = None, lev
     ax.axis('off')
         
     if(save_path is not None):
-        plt.savefig(save_path, dpi=300)
+        plt.savefig(save_path, dpi = dpi)
         
     plt.show()
 
