@@ -70,7 +70,7 @@ class RADEX_Fitting():
         ## get the data
         Xs, Ys = None, None
         if((Tkin is not None) and (Nmol is not None)):
-            Xs, Ys = self.__get_density_features(grid_path, sorted_file_list, [Tkin], [Nmol], transitions)
+            Xs, Ys = self.__get_density_features(grid_path, sorted_file_list, Tkin, Nmol, transitions)
         
         ## verify that plausible value is given for test_perc
         self.__check_test_perc(test_perc)
@@ -114,17 +114,17 @@ class RADEX_Fitting():
     
     ## Get the X and Y value data at given indices
     def __get_data_subset_from_inds(self, dataX, dataY, indices):
-        return np.take(dataX, indices, axis = 0), np.take(dataY, indices, axis = 1)
+        return np.take(dataX, indices, axis = 1), np.take(dataY, indices, axis = 1)
     
     
     
     ## split the data into training and testing data sets (both for Xs and Ys)
     def __split_train_test(self, Xs, Ys, test_perc):
         ## generate random indices for test and train data set
-        num_test_points = int(0.01*test_perc*Xs.shape[0] + 0.5)
-        inds_arr = [index for index in range(0, Xs.shape[0])]
-        test_inds = np.array(random.sample(inds_arr, num_test_points))
-        train_inds = np.delete(np.array(inds_arr), test_inds)
+        num_test_points = int(0.01*test_perc*Ys.shape[1] + 0.5)
+        inds_arr = np.arange(Ys.shape[1]) 
+        test_inds = np.array(random.sample(list(inds_arr), num_test_points))
+        train_inds = np.delete(inds_arr, test_inds) 
             
         ## take the training and testing data from the right indices
         Xs_train, Ys_train = self.__get_data_subset_from_inds(Xs, Ys, train_inds)
@@ -136,7 +136,7 @@ class RADEX_Fitting():
     
     ## function that verifies that the fraction of data points used for testing is valid
     def __check_test_perc(self, test_perc):
-        if(test_perc >= 100.):
+        if(test_perc >= 100. or test_perc < 0.):
             raise ValueError("The test percentage has to be in the range [0., 100.)")
         elif(test_perc > 50.):
             print("Be aware that with the current input you are using more than half of your data to test the model")
@@ -193,8 +193,7 @@ class RADEX_Fitting():
     ## returns y values in the form of a list with one element
     def __get_density_features(self, grid_path, sorted_file_list, Tkins, Nmols, transitions):
         ## initiate return list
-        xs_list = []
-        ys_arr = None
+        xs_list, ys_list = [], []
         
         ## initiate the name of the molecule
         mol_name = sorted_file_list[0].split('_')[0]
@@ -202,33 +201,34 @@ class RADEX_Fitting():
         ## create a dictionary (or hashmap) that connects the float to string values for all column density values in the sorted_file_list
         Nmol_dict = self.__get_Nmol_dict(sorted_file_list)
         
-        ## loop over each transition necessary
-        for tr in transitions:
-            ## temporary storage for each transition
-            xs_temp, ys_temp = [], []
+        ## loop over each column density
+        for Nmol in Nmols:
+            ## get Nmol in string format
+            Nmol_str = Nmol_dict[Nmol]
             
-            ## loop over each necessary column density
-            for Nmol in Nmols:
-                ## get Nmol in string format
-                Nmol_str = Nmol_dict[Nmol]
-                
+            ## temporary storage for each transition
+            xs_temp, ys_temp = [], None
+        
+            ## loop over each transition necessary
+            for tr in transitions:
                 ## create the file name
                 file_name = '{mol}_{tr}_{nm}.dat'.format(mol = mol_name, tr = tr, nm = Nmol_str)
                 
                 ## get the X and Y values of interest in a DataFrame
                 df = self.__get_XY_from_file(grid_path, file_name, Tkins)
                 
-                ## append the data points of interest to the x_list and ys_arr
+                ## append the data points of interest to the x_list and ys_list
                 xs_temp.append(np.array(df["Tmb"].values))
-                ys_temp.append(np.array(df["log$_{10}$(n$_{H2}$)"].values))
+                if(ys_temp is None): ## only add it when the Y-values have not been stored yet. (multiple transitions -> one density)
+                    ys_temp = np.array(df["log$_{10}$(n$_{H2}$)"].values)
                 
             ## ravel the temp arrays and add them to the return arrays
-            xs_list.append(np.array(xs_temp).ravel())
-            if ys_arr is None:  ## only add it when the Ys have not been stored yet. (multiple transitions -> one density)
-                ys_arr = np.array(ys_temp).ravel()
+            xs_list.append(np.array(xs_temp).transpose()) 
+            ys_list.append(np.array(ys_temp))
             
                 
         ## convert xs_list into a numpy array
-        xs_arr = np.array(xs_list).transpose()
+        xs_arr = np.array(xs_list)
+        ys_arr = np.array(ys_list)
         
-        return xs_arr, np.array([ys_arr])
+        return xs_arr, ys_arr 

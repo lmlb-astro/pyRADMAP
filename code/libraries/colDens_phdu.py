@@ -25,7 +25,7 @@ class ColDens_PrimaryHDU(PrimaryHDU):
     
     #### PUBLIC FUNCTIONS ####
     
-    ## returns an astro_image of a molecular line column density based on the relative given molecular abundance
+    ## returns an column density HDU of a molecular line column density based on the relative given molecular abundance
     def get_mol_colDens(self, rel_mol_abundance):
         colDens_rel = self.data*rel_mol_abundance
         return_phdu = ColDens_PrimaryHDU(colDens_rel, self.header)

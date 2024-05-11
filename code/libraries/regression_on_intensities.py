@@ -42,6 +42,7 @@ class Regressor(RADEX_Fitting):
         RADEX_Fitting.__init__(self)
         self.models = []
         self.fitted_quantities = []
+        self.Nmols = []
      
     
     
@@ -69,21 +70,24 @@ class Regressor(RADEX_Fitting):
     
     
     ## create a model prediction based on a provided grid path
-    ## Currently available quantities: "log$_{10}$(n$_{H2}$)","Nmol" and "Tkin"
+    ## Currently available quantities: "log$_{10}$(n$_{H2}$)"
     ## grid_path: path to the directory
     ## Nmol and Tkin must be a list of floats
     def create_dens_SVRregression_model_for_molecule(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30.):
+        ## sort the Nmol input from small to large values and store the sorted array
+        self.Nmols = sorted(Nmol)
+        
         ## get the training and testing data after verification that fitting can be done
-        Xs_train, Ys_train, Xs_test, Ys_test = self._get_train_test_data(grid_path, im_list_mol, Tkin, Nmol, test_perc)
+        Xs_train, Ys_train, Xs_test, Ys_test = self._get_train_test_data(grid_path, im_list_mol, Tkin, self.Nmols, test_perc)
         
         ## verify if the training data is not too large to be used to create an SVR regression model
-        if(len(Xs_train[0]) > high_svr_regressor_grid_num):
-            print("The number of data points on the grid is large, the regression might thus be time consuming. If you want to avoid this, make sure that your grid is smaller than: {num}".format(num = high_svr_regressor_grid_num))
+        if(Ys_train.shape[1] > high_svr_regressor_grid_num):
+            print("The number of data points on the grid is large, the regression might be time consuming. If you want to avoid this, make sure that your grid is smaller than: {num}".format(num = high_svr_regressor_grid_num))
         
         ## create the kernel model(s)
-        svr = SVR(kernel = kernel_svr, C = C_svr, gamma = gamma_svr, degree = degree_svr, epsilon = epsilon_svr, coef0 = coef0_svr)
-        for ys in Ys_train:
-            self.models.append(svr.fit(Xs_train, ys))
+        for xs, ys in zip(Xs_train, Ys_train):
+            svr = SVR(kernel = kernel_svr, C = C_svr, gamma = gamma_svr, degree = degree_svr, epsilon = epsilon_svr, coef0 = coef0_svr)
+            self.models.append(svr.fit(xs, ys))
             self.fitted_quantities.append("log$_{10}$(n$_{H2}$)")
         
         ## verify the regression result 
@@ -92,7 +96,12 @@ class Regressor(RADEX_Fitting):
     
     
     ## return predictions over the full map for the constructed regression model
-    def predict_map(self, Xs):
+    ## N_map: should be column densities predicted for the given molecule
+    def predict_map(self, Xs, N_map = None):
+        ## verify that only one model exists if no column density map is provided
+        if(N_map is None and len(self.models) > 1):
+            raise TypeError('It is not possible to use multiple regression models if no column density map is provided.')
+        
         ## Set all pixels to nan where there is no data for all provided transitions in the Image_List 
         Xs = Xs.get_uniform_nans()
         
@@ -102,22 +111,34 @@ class Regressor(RADEX_Fitting):
         ## get the header and data sizes for the hdus in the hdu_list
         header, len_x, len_y = Xs[0].header, len(Xs[0].data[0]), len(Xs[0].data)
         
-        ## get the indices where data should be fitted
-        indices = np.where(~np.isnan(Xs[0].data))
+        ## get the column density intervals for the different models
+        N_intervals = self.__get_N_intervals()
         
-        ## extract the data from the HDUs into a numpy array to fit
-        input_data = []
-        for x in Xs:
-            input_data.append(x.data[~np.isnan(x.data)])
-        input_data = np.array(input_data).transpose()
-        
-        ## make predictions for each model
+        ## make the prediction for each model
         outputs = []
-        for model in self.models:
-            outputs.append(model.predict(input_data))
+        indices = []
+        for idx, model in enumerate(self.models):
+        
+            ## extract the data from the HDUs into a numpy array to fit
+            input_data = []
+            inds_col = None
+            for j, x in enumerate(Xs):
+                ## get the input data within the given column density range
+                input_data.append(x.data[(~np.isnan(x.data)) & (N_intervals[idx] < N_map) & (N_map <= N_intervals[idx+1])])
+                
+                ## store the corresponding indices (only once)
+                if(j == 0):
+                    inds_col = np.where((~np.isnan(x.data)) & (N_intervals[idx] < N_map) & (N_map <= N_intervals[idx+1]))
+            
+            ## transpose to the correct data format
+            input_data = np.array(input_data).transpose() 
+        
+            ## make predictions for each model and store the indices
+            outputs.append(model.predict(input_data)) 
+            indices.append(inds_col)
         
         ## store the results into an HDU list to return
-        output_list = self.__create_HDU_list_from_outputs(outputs, indices, len_x, len_y, header)
+        output_list = self.__create_HDU_list_from_outputs(outputs, indices, len_x, len_y, header) # PROBLEM HERE: MERGE EVERYTHING TOGETHER: IN LOOP?
             
         return output_list
     
@@ -130,7 +151,22 @@ class Regressor(RADEX_Fitting):
     
     ##########
     # PRIVATE FUNCTIONS
-    ##########    
+    ##########   
+    
+    
+    ## return a list with the column density intervals for each model
+    def __get_N_intervals(self):
+        intervals = [float('-inf')]
+        
+        ## loop over the column densities (self.Nmols) of the models to add intervals
+        for idx in range(1, len(self.Nmols)):
+            intervals.append(np.nanmean([self.Nmols[idx-1], self.Nmols[idx]]))
+            
+        ## complete the intervals
+        intervals.append(float('inf'))
+        
+        return intervals
+    
     
     
     ## quantify and verify the deviations for a model fit to a given physical quantity
@@ -138,7 +174,7 @@ class Regressor(RADEX_Fitting):
         ## Calculate the relative deviation for each test point
         rel_dev_arr = []
         for a, b in zip(y_in, y_fit):
-            rel_dev_arr.append(np.sqrt((a-b)**2)/a)
+            rel_dev_arr.append(np.abs(a-b)/a)
         
         ## Get the min and max of the test Y data
         y_min, y_max = np.nanmin(y_in), np.nanmax(y_in)
@@ -153,14 +189,18 @@ class Regressor(RADEX_Fitting):
     
     ## verify the regression result 
     def __verify_regression(self, plot_verify_fitting, Xs_test, Ys_test):
+        ## Verify that the test data exists
         if(Xs_test is None or Ys_test is None):
             print("WARNING: The testing data is empty, skipping the regression verification.")
+        ## verify that the number of models match the number of Xs inputs
+        elif(Xs_test.shape[0] != len(self.models)):
+            raise ValueError("The number of models does not match the number of test data sets")
             
         elif(plot_verify_fitting):
             ## get the predictions for the training data
             ver_ys = []
-            for model in self.models:
-                ver_ys.append(model.predict(Xs_test))
+            for xs, model in zip(Xs_test, self.models):
+                ver_ys.append(model.predict(xs))
             
             ## compare the fit to the input
             for y_in, y_fit, param in zip(Ys_test, ver_ys, self.fitted_quantities):
@@ -175,18 +215,25 @@ class Regressor(RADEX_Fitting):
     def __create_HDU_list_from_outputs(self, outputs, indices, len_x, len_y, header):
         output_list = []
         
-        for output, quantity in zip(outputs, self.fitted_quantities):
-            ## update the header
-            header['BUNIT'] = quantity
+        ## initialize storage array
+        new_arr = np.zeros((len_y, len_x), dtype = float)
+        new_arr[new_arr == 0.] = np.nan
+        
+        ## update the header
+        header['BUNIT'] = self.fitted_quantities[0]
+        ## temporary verification
+        for quantity in self.fitted_quantities:
+            if(quantity != self.fitted_quantities[0]):
+                print('BE CAREFULL WITH THE HEADER OF THE OUTPUT FITS FILE, IT MIGHT NOT CONTAIN THE RIGHT UNITS')
+        
+        for output, inds in zip(outputs, indices):
                 
-            ## initialize storage array
-            new_arr = np.zeros((len_y, len_x), dtype = float)
-            new_arr[new_arr == 0.] = np.nan
-                
-            ## store as PrimaryHDU
-            for i, (x, y) in enumerate(zip(indices[0], indices[1])):
+            ## store numpy ndarray for the PrimaryHDU
+            for i, (x, y) in enumerate(zip(inds[0], inds[1])):
                 new_arr[x][y] = output[i]
-            output_list.append(pyfits.PrimaryHDU(new_arr, header))
+        
+        ## store the output PrimaryHDU in
+        output_list.append(pyfits.PrimaryHDU(new_arr, header))
             
         ## to HDUList format
         output_list = pyfits.HDUList(output_list) 
