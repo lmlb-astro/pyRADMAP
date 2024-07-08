@@ -91,7 +91,10 @@ class Regressor(RADEX_Fitting):
             self.fitted_quantities.append("log$_{10}$(n$_{H2}$)")
         
         ## verify the regression result 
-        self.__verify_regression(plot_verify_fitting, Xs_test, Ys_test)
+        if(plot_verify_fitting):
+            self.__verify_regression(Xs_test, Ys_test)
+        else:
+            print("----> Skipping the regression verification")
     
     
     
@@ -170,7 +173,7 @@ class Regressor(RADEX_Fitting):
     
     
     ## quantify and verify the deviations for a model fit to a given physical quantity
-    def __inspect_deviations_fit(self, y_in, y_fit, param):
+    def __inspect_deviations_fit(self, y_in, y_fit, param, col_dens):
         ## Calculate the relative deviation for each test point
         rel_dev_arr = []
         for a, b in zip(y_in, y_fit):
@@ -179,16 +182,22 @@ class Regressor(RADEX_Fitting):
         ## Get the min and max of the test Y data
         y_min, y_max = np.nanmin(y_in), np.nanmax(y_in)
         
-        ## plot the fit as function of the input
-        plfuncs.plot_two_arrays_and_curve(y_in, y_fit, [y_min, y_max], [y_min, y_max], "input ({param})".format(param = param), "fit ({param})".format(param = param))
-        
-        ## plot the deviation of the fit as a function of the input
-        plfuncs.plot_two_arrays(y_in, rel_dev_arr, "input ({param})".format(param = param), "relative deviation")
+        ## plot the fit verification plots
+        plfuncs.plot_fit_verification(y_in, y_fit, rel_dev_arr, [y_min, y_max], 
+                                      "input ({param})".format(param = param), 
+                                      "fit ({param})".format(param = param), 
+                                      "relative deviation",
+                                      title_input = "{quan} = {col_dens}x{fact} ({unit})".format(col_dens = col_dens/1e14,
+                                                                                                fact = '10$^{14}$',
+                                                                                                 unit = 'cm$^{-2}$',
+                                                                                                 quan = 'N$_{H_{2}}$'
+                                                                                                )
+                                     )
     
     
     
     ## verify the regression result 
-    def __verify_regression(self, plot_verify_fitting, Xs_test, Ys_test):
+    def __verify_regression(self, Xs_test, Ys_test):
         ## Verify that the test data exists
         if(Xs_test is None or Ys_test is None):
             print("WARNING: The testing data is empty, skipping the regression verification.")
@@ -196,18 +205,15 @@ class Regressor(RADEX_Fitting):
         elif(Xs_test.shape[0] != len(self.models)):
             raise ValueError("The number of models does not match the number of test data sets")
             
-        elif(plot_verify_fitting):
+        else:
             ## get the predictions for the training data
             ver_ys = []
             for xs, model in zip(Xs_test, self.models):
                 ver_ys.append(model.predict(xs))
             
             ## compare the fit to the input
-            for y_in, y_fit, param in zip(Ys_test, ver_ys, self.fitted_quantities):
-                self.__inspect_deviations_fit(y_in, y_fit, param)
-                
-        else:
-            print("----> Skipping the regression verification")
+            for y_in, y_fit, param, col_dens in zip(Ys_test, ver_ys, self.fitted_quantities, self.Nmols):
+                self.__inspect_deviations_fit(y_in, y_fit, param, col_dens)
     
     
     

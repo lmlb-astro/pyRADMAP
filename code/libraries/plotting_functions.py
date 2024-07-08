@@ -9,35 +9,52 @@ import astropy.wcs as wcs
 
 #### PLOTTING OF ARRAYS ####
 
-## plot two arrays
-def plot_two_arrays(arr1, arr2, label_x, label_y, save_path = None, plot_code = 'ro', dpi = 300):
-    fig, ax = plt.subplots()
+
+## plot two arrays on a given axis
+def plot_two_arrays_on_ax(ax, arr1, arr2, label_x, label_y, marker_code = 'ro'):
+    ## Plot the arrays
+    ax.plot(arr1, arr2, marker_code)
     
-    ax.plot(arr1, arr2, plot_code)
-    
+    ## set the labels
     ax.set_xlabel(label_x)
     ax.set_ylabel(label_y)
+
+
     
+## plot two arrays as well as a function on a give axis
+def plot_two_arrays_and_curve_on_ax(ax, arr1, arr2, x_curve, y_curve, label_x, label_y, marker_code = 'ro', line_code = 'k-'):
+    ## plot the arrays and curve
+    ax.plot(arr1, arr2, marker_code)
+    ax.plot(x_curve, y_curve, line_code)
+    
+    ## set the labels
+    ax.set_xlabel(label_x)
+    ax.set_ylabel(label_y)
+
+    
+    
+## Function to produce the verification plot
+def plot_fit_verification(y_in, y_fit, rel_dev_arr, line_points, x_label, y_label1, y_label2, save_path = None, marker_code = 'ro', line_code = 'k-', dpi = 300, title_input = None):
+    ## create the figure and axis
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize = (12, 5))
+    
+    ## plot title
+    if(title_input):
+        fig.suptitle(title_input)
+    
+    ## plot on axis 1
+    plot_two_arrays_and_curve_on_ax(ax1, y_in, y_fit, line_points, line_points, x_label, y_label1, 
+                                    marker_code = marker_code, line_code = line_code)
+    
+    ## plot on axis 2
+    plot_two_arrays_on_ax(ax2, y_in, rel_dev_arr, x_label, y_label2, marker_code = marker_code)
+    
+    ## save the figure
     if(save_path is not None):
         plt.savefig(save_path, dpi = dpi)
     
     plt.show()
-
-
-## plot two arrays as well as a function
-def plot_two_arrays_and_curve(arr1, arr2, x_curve, y_curve, label_x, label_y, save_path = None, plot_code = 'ro', dpi = 300):
-    fig, ax = plt.subplots()
     
-    ax.plot(arr1, arr2, plot_code)
-    ax.plot(x_curve, y_curve, 'k-')
-    
-    ax.set_xlabel(label_x)
-    ax.set_ylabel(label_y)
-    
-    if(save_path is not None):
-        plt.savefig(save_path, dpi = dpi)
-    
-    plt.show()
 
 
     
@@ -115,9 +132,37 @@ def plot_hdu(hdu, label, contour_hdu = None, min_val = None, max_val = None, lev
 
 
 
+#### OLD FUNCTIONS
+
+## plot two arrays as well as a function
+#def plot_two_arrays_and_curve(arr1, arr2, x_curve, y_curve, label_x, label_y, save_path = None, plot_code = 'ro', dpi = 300):
+#    fig, ax = plt.subplots()
+#    
+#    ax.plot(arr1, arr2, plot_code)
+#    ax.plot(x_curve, y_curve, 'k-')
+#    
+#    ax.set_xlabel(label_x)
+#    ax.set_ylabel(label_y)
+#    
+#    if(save_path is not None):
+#        plt.savefig(save_path, dpi = dpi)
+#    
+#    plt.show()
 
 
-
+## plot two arrays
+#def plot_two_arrays(arr1, arr2, label_x, label_y, save_path = None, plot_code = 'ro', dpi = 300):
+#    fig, ax = plt.subplots()
+#    
+#    ax.plot(arr1, arr2, plot_code)
+#    
+#    ax.set_xlabel(label_x)
+#    ax.set_ylabel(label_y)
+#    
+#    if(save_path is not None):
+#        plt.savefig(save_path, dpi = dpi)
+#    
+#    plt.show()
 
 
 
