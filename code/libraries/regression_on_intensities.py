@@ -115,136 +115,14 @@ class Regressor(RADEX_Fitting):
         ## get the header and data sizes for the hdus in the hdu_list
         header, len_x, len_y = Xs[0].header, len(Xs[0].data[0]), len(Xs[0].data)
         
-        ## predict the densities (either using or not using interpolation)
-        indices, outputs = [], []
-        if(interpolate):
-            indices, outputs = self.__pred_dens_from_models_interp(Xs, N_map, indices, outputs)
-        else:
-            indices, outputs = self.__pred_dens_from_models(Xs, N_map, indices, outputs)
-        
-        ## get the column density intervals for the different models
-        #N_intervals = self.__get_N_intervals()
-        
-        ## make the prediction for each model
-        #outputs = []
-        #indices = []
-        #for idx, model in enumerate(self.models):
-        #
-        #    ## extract the data from the HDUs into a numpy array to fit
-        #    input_data = []
-        #    inds_col = None
-        #    for j, x in enumerate(Xs):
-        #        ## get the input data within the given column density range
-        #        input_data.append(x.data[(~np.isnan(x.data)) & (N_intervals[idx] < N_map) & (N_map <= N_intervals[idx+1])])
-        #        
-        #        ## store the corresponding indices (only once)
-        #        if(j == 0):
-        #            inds_col = np.where((~np.isnan(x.data)) & (N_intervals[idx] < N_map) & (N_map <= N_intervals[idx+1]))
-        #    
-        #    ## transpose to the correct data format
-        #    input_data = np.array(input_data).transpose() 
-        # 
-        #    ## make predictions for each model and store the indices
-        #    outputs.append(model.predict(input_data)) 
-        #    indices.append(inds_col)
+        ## predict the densities (either using interpolation or not)
+        indices, outputs = self.__pred_dens_from_models(Xs, N_map, interpolate)#, indices, outputs)
         
         ## store the results into an HDU list to return
         output_list = self.__create_HDU_list_from_outputs(outputs, indices, len_x, len_y, header) # PROBLEM HERE: MERGE EVERYTHING TOGETHER: IN LOOP?
             
         return output_list
-    
-    
-    def __pred_dens_from_models(self, Xs, N_map, indices, outputs):
-        ## get the column density intervals for the different models
-        N_intervals = self.__get_N_intervals()
         
-        ## initialize return lists
-        outputs, indices = [], []
-        
-        ## make the prediction for each model
-        for idx, model in enumerate(self.models):
-        
-            ## extract the data from the HDUs into a numpy array to fit
-            input_data = []
-            inds_col = None
-            
-            ## loop over the molecular lines
-            for j, x in enumerate(Xs):
-                ## get the input data within the given column density range
-                input_data.append(x.data[(~np.isnan(x.data)) & (N_intervals[idx] < N_map) & (N_map <= N_intervals[idx+1])])
-                
-                ## store the corresponding indices (only once)
-                if(j == 0):
-                    inds_col = np.where((~np.isnan(x.data)) & (N_intervals[idx] < N_map) & (N_map <= N_intervals[idx+1]))
-            
-            ## transpose to the correct data format
-            input_data = np.array(input_data).transpose() 
-            
-            ## make predictions for each model and store the indices
-            outputs.append(model.predict(input_data)) 
-            indices.append(inds_col)
-        
-        return indices, outputs
-    
-    
-    def __pred_dens_from_models_interp(self, Xs, N_map, indices, outputs):
-        ## verify that the number of models is equal to the number of column densities
-        if(len(self.models) != len(self.Nmols)):
-            raise ValueError('The number of models and column densities are inconsistent')
-        ## verify that at least 3 models are available for interpolation
-        if(len(self.Nmols) < 3):
-            raise ValueError('Performing interpolation requires models for at least 3 different column densities')
-        
-        ## get the column density values for the intervals
-        N_intervals = self.__get_N_intervals_interp()
-        
-        ## initialize return lists
-        outputs, indices = [], []
-        
-        ## verify that the number of intervals aligns with the number of models
-        if(len(N_intervals) != len(self.models)):
-            raise ValueError('The intervals do not align with the number of models')
-        
-        ## make the predictions
-        for idx in range(1, len(self.models)):
-            
-            ## extract the data from the HDUs into a numpy array to fit
-            input_data = []
-            inds_col = None
-            N_data = None
-            
-            ## loop over the molecular lines
-            for j, x in enumerate(Xs):
-                ## get the input data in the column density range of interest
-                input_data.append(x.data[(~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx])])
-                    
-                ## store the corresponding indices once
-                if(j == 0):
-                    inds_col = np.where((~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx]))
-                    N_data = N_map[(~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx])]
-                    
-            ## transpose to the correct data for passing through the model
-            input_data = np.array(input_data).transpose()
-            
-            ## get the models
-            model1 = self.models[idx-1]
-            model2 = self.models[idx]
-            
-            ## make the two predictions
-            pred1 = model1.predict(input_data)
-            pred2 = model2.predict(input_data)
-            
-            ## perform the interpolation
-            pred = (N_data - N_intervals[idx-1])*(pred2 - pred1)/(N_intervals[idx] - N_intervals[idx-1]) + pred1
-        
-            ## make predictions for each model and store the indices
-            outputs.append(pred)
-            indices.append(inds_col)
-            
-        return indices, outputs
-    
-    
-    
     
     
     
@@ -252,15 +130,25 @@ class Regressor(RADEX_Fitting):
     # PRIVATE FUNCTIONS
     ##########   
     
-    
     ## return a list with the column density intervals for each model
-    def __get_N_intervals(self):
-        ## start the interval at -inf
+    def __get_N_intervals(self, interpolate):
+        ## verification in the case of interpolate
+        if(interpolate and len(self.Nmols) < 3):
+            raise ValueError('Performing interpolation requires models for at least 3 different column densities')
+        
+        ## start the interval at 0
         intervals = [0.]
         
-        ## loop over the column densities (self.Nmols) of the models to add intervals
-        for idx in range(1, len(self.Nmols)):
-            intervals.append(np.nanmean([self.Nmols[idx-1], self.Nmols[idx]]))
+        ## define the end of the loop depending on whether interpolation will be used
+        end_loop = len(self.Nmols)
+        if(interpolate): end_loop = len(self.Nmols) - 1
+        
+        ## loop over the column densities (self.Nmols) of the models to create a list of densities that defines the interval
+        for idx in range(1, end_loop):
+            if(interpolate):
+                intervals.append(self.Nmols[idx])
+            else:
+                intervals.append(np.nanmean([self.Nmols[idx-1], self.Nmols[idx]]))
             
         ## complete the intervals
         intervals.append(float('inf'))
@@ -268,20 +156,76 @@ class Regressor(RADEX_Fitting):
         return intervals
     
     
-    def __get_N_intervals_interp(self):
-        ## start the interval at -inf
-        intervals = [0.]
+    
+    ## Predict the densities for an input np.array for a given model (defined by its idx in self.models)
+    ## Option: use the interpolation, which employs the provided column density information
+    def __make_pred_for_array(self, idx, input_data, N_data, N1, N2, interpolate):
+        ## take the model for prediction
+        model1 = self.models[idx-1]
+        pred1 = model1.predict(input_data)
         
-        ## loop over the column densities (self.Nmols) of the models to fix the intervals for interpolation
-        for idx in range(1, len(self.Nmols)-1):
-            intervals.append(self.Nmols[idx])
+        ## the case where interpolation has to be done
+        if(interpolate):
+            ## verify N_data
+            if(N_data is None): raise TypeError("No column density data is provided. Interpolation is thus not possible")
             
-        ## end the intervals with +inf
-        intervals.append(float('inf'))
-        
-        return intervals
+            ## make second model prediction
+            model2 = self.models[idx]
+            pred2 = model2.predict(input_data)
             
+            ## perform the interpolation
+            pred = (N_data - N1)*(pred2 - pred1)/(N2 - N1) + pred1
+            
+            return pred
         
+        return pred1
+        
+    
+    
+    ## predict the density over the provided map using the available models
+    ## Option: Use the interpolation approach or not
+    def __pred_dens_from_models(self, Xs, N_map, interpolate): #, indices, outputs
+        ## verify that the number of models is equal to the number of column densities
+        if(len(self.models) != len(self.Nmols)):
+            raise ValueError('The number of models and column densities are inconsistent.')
+        
+        ## get the column density intervals for the different models
+        N_intervals = self.__get_N_intervals(interpolate)
+        
+        ## initialize return lists
+        outputs, indices = [], []
+        
+        ## set the end value for the loop
+        end_loop = len(self.Nmols) + 1
+        if(interpolate):
+            end_loop = len(self.Nmols)
+        
+        ## make the predictions
+        for idx in range(1, end_loop):
+            input_data, inds_col, N_data = [], None, None
+            
+            ## loop over the molecular lines
+            for j, x in enumerate(Xs):
+                ## get the input data within the given column density range from the provided HDUs
+                input_data.append(x.data[(~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx])])
+                
+                ## store the corresponding indices once
+                if(j == 0):
+                    inds_col = np.where((~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx]))
+                    ## in the case of interpolation, add the column density data
+                    if(interpolate):
+                        N_data = N_map[(~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx])]
+                        
+            ## transpose to the correct data format
+            input_data = np.array(input_data).transpose()
+            
+            ## make predictions for the density and append them to the return lists
+            pred = self.__make_pred_for_array(idx, input_data, N_data, N_intervals[idx-1], N_intervals[idx], interpolate)
+            outputs.append(pred)
+            indices.append(inds_col)
+            
+        return indices, outputs
+    
     
     
     ## quantify and verify the deviations for a model fit to a given physical quantity
