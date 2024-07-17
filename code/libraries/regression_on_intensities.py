@@ -47,7 +47,7 @@ class Regressor(RADEX_Fitting):
     
     
     ###########
-    # PUBLIC FUNCTIONS TO CALL FIT YOUR DATA
+    # PUBLIC FUNCTIONS TO FIT YOUR DATA
     ###########
     
     
@@ -58,12 +58,12 @@ class Regressor(RADEX_Fitting):
     
     
     ## A function to create an SVR model and simultaneously map the fitted properties
-    def map_from_dens_SVRregression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30.):
+    def map_from_dens_SVRregression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30., N_map = None, interpolate = False):
         ## create the SVR regression model
         self.create_dens_SVRregression_model_for_molecule(grid_path, im_list_mol, Tkin, Nmol, plot_verify_fitting, test_perc)
         
         ## construct the map
-        output_list = self.predict_map(im_list_mol)
+        output_list = self.predict_map(im_list_mol, N_map = N_map, interpolate = interpolate)
         
         return output_list
     
@@ -286,7 +286,7 @@ class Regressor(RADEX_Fitting):
         ## temporary verification
         for quantity in self.fitted_quantities:
             if(quantity != self.fitted_quantities[0]):
-                print('BE CAREFULL WITH THE HEADER OF THE OUTPUT FITS FILE, IT MIGHT NOT CONTAIN THE RIGHT UNITS')
+                print('BE CAREFUL WITH THE HEADER OF THE OUTPUT FITS FILE, IT MIGHT NOT CONTAIN THE RIGHT UNITS')
         
         for output, inds in zip(outputs, indices):
                 
