@@ -7,6 +7,7 @@ from sklearn.svm import SVR
 import os
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # IMPORT RADEX_FITTING INSTEAD
 from RADEX_fitting import RADEX_Fitting
@@ -66,12 +67,12 @@ class Regressor(RADEX_Fitting):
     
     
     ## A function to create an SVR model and simultaneously map the fitted properties
-    def map_from_dens_SVRregression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30., N_map = None, interpolate = False):
+    def map_from_dens_SVRregression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30., N_map = None, interpolate = False, plot_ver_in = False):
         ## create the SVR regression model
         self.create_dens_SVRregression_model_for_molecule(grid_path, im_list_mol, Tkin, Nmol, plot_verify_fitting, test_perc)
         
         ## construct the map
-        output_list = self.predict_map(im_list_mol, N_map = N_map, interpolate = interpolate)
+        output_list = self.predict_map(im_list_mol, N_map = N_map, interpolate = interpolate, plot_ver_in = plot_ver_in)
         
         return output_list
     
@@ -117,7 +118,7 @@ class Regressor(RADEX_Fitting):
     ## return predictions over the full map for the constructed regression model
     ## N_map: should be column densities predicted for the given molecule
     ## Interpolate: whether or not to interpolate to create the density map
-    def predict_map(self, Xs, N_map = None, interpolate = False):
+    def predict_map(self, Xs, N_map = None, interpolate = False, plot_ver_in = False):
         ## verify that only one model exists if no column density map is provided
         if(N_map is None and len(self.models) > 1):
             raise TypeError('It is not possible to use multiple regression models if no column density map is provided.')
@@ -132,7 +133,7 @@ class Regressor(RADEX_Fitting):
         header, len_x, len_y = Xs[0].header, len(Xs[0].data[0]), len(Xs[0].data)
         
         ## predict the densities (either using interpolation or not)
-        indices, outputs = self.__pred_dens_from_models(Xs, N_map, interpolate)#, indices, outputs)
+        indices, outputs = self.__pred_dens_from_models(Xs, N_map, interpolate, plot_ver_in = plot_ver_in)#, indices, outputs)
         
         ## store the results into an HDU list to return
         output_list = self.__create_HDU_list_from_outputs(outputs, indices, len_x, len_y, header) # PROBLEM HERE: MERGE EVERYTHING TOGETHER: IN LOOP?
@@ -199,22 +200,24 @@ class Regressor(RADEX_Fitting):
     
     
     
-    def __plot_input_verification(self, idx, in_data):
+    def __plot_input_verification(self, idx, in_data, label_x = None, label_y = None):
         input_vals = self.x_inputs[idx]
         
-        #print(in_data.shape)
-        plt.hist(input_vals[:, 0], alpha = 0.3, density = True)
-        plt.hist(input_vals[:, 1], alpha = 0.3, density = True)
+        p1 = plt.plot([], [], '-', label = 'fit data')
+        sns.kdeplot(x = input_vals[:, 0], y = input_vals[:, 1], fill = False, color = p1[0].get_color())
+        p2 = plt.plot([], [], '-', label = 'data')
+        sns.kdeplot(x = in_data[:, 0], y = in_data[:, 1], fill = False, color = p2[0].get_color())
         
-        plt.hist(in_data[:, 0], alpha = 0.3, density = True)
-        plt.hist(in_data[:, 1], alpha = 0.3, density = True)
+        if label_x is not None: plt.xlabel(label_x)
+        if label_y is not None: plt.ylabel(label_y)
         
+        plt.legend()
         plt.show()
     
     
     ## predict the density over the provided map using the available models
     ## Option: Use the interpolation approach or not
-    def __pred_dens_from_models(self, Xs, N_map, interpolate): #, indices, outputs
+    def __pred_dens_from_models(self, Xs, N_map, interpolate, plot_ver_in = True): #, indices, outputs
         ## verify that the number of models is equal to the number of column densities
         if(len(self.models) != len(self.Nmols)):
             raise ValueError('The number of models and column densities are inconsistent.')
@@ -250,7 +253,8 @@ class Regressor(RADEX_Fitting):
             input_data = np.array(input_data).transpose()
             
             ## Verify the value distribution of the input and the model
-            self.__plot_input_verification(idx-1, input_data)
+            if plot_ver_in:
+                self.__plot_input_verification(idx-1, input_data)
             
             ## make predictions for the density and append them to the return lists
             pred = self.__make_pred_for_array(idx, input_data, N_data, N_intervals[idx-1], N_intervals[idx], interpolate)
