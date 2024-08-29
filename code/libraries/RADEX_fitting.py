@@ -4,6 +4,8 @@ import pandas as pd
 import os
 import random
 
+import matplotlib.pyplot as plt
+
 #####
 # DEFINES THE RADEX FITTING CLASS
 #####
@@ -19,6 +21,7 @@ class RADEX_Fitting():
     ## constructor
     def __init__(self):
         self.available_phys_quantities = ["log$_{10}$(n$_{H2}$)", "Nmol", "Tkin"]
+        self.x_inputs = []
     
     
     
@@ -71,6 +74,9 @@ class RADEX_Fitting():
         Xs, Ys = None, None
         if((Tkin is not None) and (Nmol is not None)):
             Xs, Ys = self.__get_density_features(grid_path, sorted_file_list, Tkin, Nmol, transitions)
+            
+            ## store the Xs input
+            for idx1 in range(0, Xs.shape[0]): self.x_inputs.append(Xs[idx1])
         
         ## verify that plausible value is given for test_perc
         self.__check_test_perc(test_perc)

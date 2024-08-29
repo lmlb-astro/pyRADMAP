@@ -6,9 +6,17 @@ from sklearn.svm import SVR
 
 import os
 
+import matplotlib.pyplot as plt
+
 # IMPORT RADEX_FITTING INSTEAD
 from RADEX_fitting import RADEX_Fitting
 import plotting_functions as plfuncs
+
+
+
+
+
+
 
 #####
 # DEFINES THE REGRESSOR CLASS
@@ -86,7 +94,15 @@ class Regressor(RADEX_Fitting):
         
         ## create the kernel model(s)
         for xs, ys in zip(Xs_train, Ys_train):
-            svr = SVR(kernel = kernel_svr, C = C_svr, gamma = gamma_svr, degree = degree_svr, epsilon = epsilon_svr, coef0 = coef0_svr)
+            svr = SVR(kernel = kernel_svr, 
+                      C = C_svr, 
+                      gamma = gamma_svr, 
+                      degree = degree_svr, 
+                      epsilon = epsilon_svr, 
+                      coef0 = coef0_svr,
+                      #random_state = 900
+                     )
+            
             self.models.append(svr.fit(xs, ys))
             self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
         
@@ -179,7 +195,21 @@ class Regressor(RADEX_Fitting):
             return pred
         
         return pred1
+    
+    
+    
+    
+    def __plot_input_verification(self, idx, in_data):
+        input_vals = self.x_inputs[idx]
         
+        #print(in_data.shape)
+        plt.hist(input_vals[:, 0], alpha = 0.3, density = True)
+        plt.hist(input_vals[:, 1], alpha = 0.3, density = True)
+        
+        plt.hist(in_data[:, 0], alpha = 0.3, density = True)
+        plt.hist(in_data[:, 1], alpha = 0.3, density = True)
+        
+        plt.show()
     
     
     ## predict the density over the provided map using the available models
@@ -218,6 +248,9 @@ class Regressor(RADEX_Fitting):
                         
             ## transpose to the correct data format
             input_data = np.array(input_data).transpose()
+            
+            ## Verify the value distribution of the input and the model
+            self.__plot_input_verification(idx-1, input_data)
             
             ## make predictions for the density and append them to the return lists
             pred = self.__make_pred_for_array(idx, input_data, N_data, N_intervals[idx-1], N_intervals[idx], interpolate)
