@@ -3,6 +3,7 @@ import pandas as pd
 import astropy.io.fits as pyfits
 
 from sklearn.svm import SVR
+from sklearn.kernel_ridge import KernelRidge
 
 import os
 
@@ -12,6 +13,7 @@ import seaborn as sns
 # IMPORT RADEX_FITTING INSTEAD
 from RADEX_fitting import RADEX_Fitting
 import plotting_functions as plfuncs
+from CF_model import CF_model
 
 
 
@@ -31,12 +33,15 @@ import plotting_functions as plfuncs
 ## Parameters for SVR regression
 high_svr_regressor_grid_num = 10000 ## Value to issue warning of larger grid
 
-kernel_svr = "poly"
-C_svr = 100
-gamma_svr = "auto"
-degree_svr = 2
+kernel_t = "poly"
+degree_t = 2
+coef0_t = 1
+C_t = 100.
+gamma_t = "auto"
+
 epsilon_svr = 0.1
-coef0_svr = 1
+
+SEED = 9843
 #######################################
 
 
@@ -47,11 +52,15 @@ coef0_svr = 1
 class Regressor(RADEX_Fitting):
     
     ## constructor
-    def __init__(self):
+    def __init__(self, method = 'SVR'):
         RADEX_Fitting.__init__(self)
         self.models = []
         self.fitted_quantities = []
         self.Nmols = []
+        
+        ## verify the input
+        if method != 'SVR' and method != 'KR' and method != 'CF': raise AttributeError('{m} is not a supported model type'.format(m = method))
+        self.method = method
      
     
     
@@ -66,10 +75,10 @@ class Regressor(RADEX_Fitting):
     
     
     
-    ## A function to create an SVR model and simultaneously map the fitted properties
-    def map_from_dens_SVRregression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30., N_map = None, interpolate = False, plot_ver_in = False):
-        ## create the SVR regression model
-        self.create_dens_SVRregression_model_for_molecule(grid_path, im_list_mol, Tkin, Nmol, plot_verify_fitting, test_perc)
+    ## A function to create a model and simultaneously map the fitted properties
+    def map_from_dens_regression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30., N_map = None, interpolate = False, plot_ver_in = False):
+        ## create the regression model
+        self.create_dens_regression_model_for_molecule(grid_path, im_list_mol, Tkin = Tkin, Nmol = Nmol, plot_verify_fitting = plot_verify_fitting, test_perc = test_perc)
         
         ## construct the map
         output_list = self.predict_map(im_list_mol, N_map = N_map, interpolate = interpolate, plot_ver_in = plot_ver_in)
@@ -82,30 +91,52 @@ class Regressor(RADEX_Fitting):
     ## Currently available quantities: "log$_{10}$(n$_{H2}$)"
     ## grid_path: path to the directory
     ## Nmol and Tkin must be a list of floats
-    def create_dens_SVRregression_model_for_molecule(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30.):
+    def create_dens_regression_model_for_molecule(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30.):
         ## sort the Nmol input from small to large values and store the sorted array
         self.Nmols = sorted(Nmol)
         
         ## get the training and testing data after verification that fitting can be done
         Xs_train, Ys_train, Xs_test, Ys_test = self._get_train_test_data(grid_path, im_list_mol, Tkin, self.Nmols, test_perc)
         
-        ## verify if the training data is not too large to be used to create an SVR regression model
+        ## verify if the training data is not too large to be used to create a regression model
         if(Ys_train.shape[1] > high_svr_regressor_grid_num):
             print("The number of data points on the grid is large, the regression might be time consuming. If you want to avoid this, make sure that your grid is smaller than: {num}".format(num = high_svr_regressor_grid_num))
         
-        ## create the kernel model(s)
+        ## create the kernel model(s) ##
         for xs, ys in zip(Xs_train, Ys_train):
-            svr = SVR(kernel = kernel_svr, 
-                      C = C_svr, 
-                      gamma = gamma_svr, 
-                      degree = degree_svr, 
-                      epsilon = epsilon_svr, 
-                      coef0 = coef0_svr,
-                      #random_state = 900
-                     )
             
-            self.models.append(svr.fit(xs, ys))
-            self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
+            ## SVR 
+            if self.method == 'SVR':
+                svr = SVR(kernel = kernel_t, 
+                          C = C_t, 
+                          gamma = gamma_t, 
+                          degree = degree_t, 
+                          epsilon = epsilon_svr, 
+                          coef0 = coef0_t,
+                          #random_state = SEED
+                         )
+                self.models.append(svr.fit(xs, ys))
+                self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
+            
+            ## Kernel Ridge
+            if self.method == 'KR':
+                kr = KernelRidge(kernel = kernel_t,
+                                 degree = degree_t,
+                                 alpha = 0.5/C_t, ## see sklearn SVR and KernelRidge documentation
+                                 #gamma = gamma_t,
+                                 coef0 = coef0_t,
+                                 #random_state = SEED
+                                )
+                self.models.append(kr.fit(xs, ys))
+                self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
+                
+            ## CF
+            if self.method == 'CF':
+                cf = CF_model(degree_t)
+                cf.fit(xs.T, ys) ## Transpose for curve_fit input
+                self.models.append(cf)
+                self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
+                
         
         ## verify the regression result 
         if(plot_verify_fitting):
@@ -136,7 +167,7 @@ class Regressor(RADEX_Fitting):
         indices, outputs = self.__pred_dens_from_models(Xs, N_map, interpolate, plot_ver_in = plot_ver_in)#, indices, outputs)
         
         ## store the results into an HDU list to return
-        output_list = self.__create_HDU_list_from_outputs(outputs, indices, len_x, len_y, header) # PROBLEM HERE: MERGE EVERYTHING TOGETHER: IN LOOP?
+        output_list = self.__create_HDU_list_from_outputs(outputs, indices, len_x, len_y, header) 
             
         return output_list
         
@@ -162,10 +193,8 @@ class Regressor(RADEX_Fitting):
         
         ## loop over the column densities (self.Nmols) of the models to create a list of densities that defines the interval
         for idx in range(1, end_loop):
-            if(interpolate):
-                intervals.append(self.Nmols[idx])
-            else:
-                intervals.append(np.nanmean([self.Nmols[idx-1], self.Nmols[idx]]))
+            if(interpolate): intervals.append(self.Nmols[idx])
+            else: intervals.append(np.nanmean([self.Nmols[idx-1], self.Nmols[idx]]))
             
         ## complete the intervals
         intervals.append(float('inf'))
@@ -177,6 +206,9 @@ class Regressor(RADEX_Fitting):
     ## Predict the densities for an input np.array for a given model (defined by its idx in self.models)
     ## Option: use the interpolation, which employs the provided column density information
     def __make_pred_for_array(self, idx, input_data, N_data, N1, N2, interpolate):
+        ## Transpose the input data for the curve_fit option
+        if(self.method == 'CF'): input_data = input_data.T
+        
         ## take the model for prediction
         model1 = self.models[idx-1]
         pred1 = model1.predict(input_data)
