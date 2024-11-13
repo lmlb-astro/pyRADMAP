@@ -331,6 +331,8 @@ class Regressor(RADEX_Fitting):
             raise ValueError("The number of models does not match the number of test data sets")
             
         else:
+            ## transpose data if using 'CF' method
+            if(self.method == 'CF'): Xs_test = [xs.T for xs in Xs_test]
             ## get the predictions for the training data
             ver_ys = []
             for xs, model in zip(Xs_test, self.models):
