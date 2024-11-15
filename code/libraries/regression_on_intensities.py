@@ -240,26 +240,21 @@ class Regressor(RADEX_Fitting):
     
     
     def __plot_input_verification(self, idx, in_data, label_x = None, label_y = None):
-        input_vals = self.x_inputs[idx]
-        
         ## plot the RADEX data
         rad_data = self.model_data_x[idx]
-        plt.plot(rad_data[0], rad_data[1], 'ro')
+        plt.plot(rad_data[0], rad_data[1], 'ro', label = 'RADEX data')
         
-        #print(in_data.shape)
+        ## plot the observational data
         in_data = in_data.T
-        plt.plot(in_data[0], in_data[1], 'yo')
-        
-        #p1 = plt.plot([], [], '-', label = 'fit data')
-        #sns.kdeplot(x = input_vals[:, 0], y = input_vals[:, 1], fill = False, color = p1[0].get_color())
-        #p2 = plt.plot([], [], '-', label = 'data')
-        #sns.kdeplot(x = in_data[:, 0], y = in_data[:, 1], fill = False, color = p2[0].get_color())
+        plt.plot([], [], 'y-', label = 'obs. data')
+        sns.kdeplot(x = in_data[0], y = in_data[1], fill = False, color = 'y')
         
         if label_x is not None: plt.xlabel(label_x)
         if label_y is not None: plt.ylabel(label_y)
         
         plt.legend()
         plt.show()
+    
     
     
     ## predict the density over the provided map using the available models
@@ -293,8 +288,7 @@ class Regressor(RADEX_Fitting):
                 if(j == 0):
                     inds_col = np.where((~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx]))
                     ## in the case of interpolation, add the column density data
-                    if(interpolate):
-                        N_data = N_map[(~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx])]
+                    if(interpolate): N_data = N_map[(~np.isnan(x.data)) & (N_intervals[idx-1] < N_map) & (N_map <= N_intervals[idx])]
                         
             ## transpose to the correct data format
             input_data = np.array(input_data).transpose()
@@ -304,8 +298,10 @@ class Regressor(RADEX_Fitting):
             
             ## make predictions for the density and append them to the return lists
             pred = self.__make_pred_for_array(idx, input_data, N_data, N_intervals[idx-1], N_intervals[idx], interpolate)
-            outputs.append(pred)
-            indices.append(inds_col)
+            outputs.append(pred), indices.append(inds_col)
+            
+        ## Verify the value distribution of the input and the last model when interpolating
+        if interpolate and plot_ver_in: self.__plot_input_verification(len(self.Nmols)-1, input_data)
             
         return indices, outputs
     

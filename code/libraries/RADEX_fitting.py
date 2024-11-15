@@ -21,7 +21,6 @@ class RADEX_Fitting():
     ## constructor
     def __init__(self):
         self.available_phys_quantities = ["log$_{10}$(n$_{H2}$)", "Nmol", "Tkin"]
-        self.x_inputs = []
     
     
     
@@ -72,11 +71,7 @@ class RADEX_Fitting():
     def _get_input_data(self, grid_path, sorted_file_list, Tkin, Nmol, transitions, test_perc = 30.):
         ## get the data
         Xs, Ys = None, None
-        if((Tkin is not None) and (Nmol is not None)):
-            Xs, Ys = self.__get_density_features(grid_path, sorted_file_list, Tkin, Nmol, transitions)
-            
-            ## store the Xs input
-            for idx1 in range(0, Xs.shape[0]): self.x_inputs.append(Xs[idx1])
+        if((Tkin is not None) and (Nmol is not None)): Xs, Ys = self.__get_density_features(grid_path, sorted_file_list, Tkin, Nmol, transitions)
         
         ## verify that plausible value is given for test_perc
         self.__check_test_perc(test_perc)
@@ -217,6 +212,8 @@ class RADEX_Fitting():
         
             ## loop over each transition necessary
             for tr in transitions:
+                print(mol_name)
+                print(tr)
                 ## create the file name
                 file_name = '{mol}_{tr}_{nm}.dat'.format(mol = mol_name, tr = tr, nm = Nmol_str)
                 
@@ -224,9 +221,9 @@ class RADEX_Fitting():
                 df = self.__get_XY_from_file(grid_path, file_name, Tkins)
                 
                 ## append the data points of interest to the x_list and ys_list
+                ## only add to the ys_list when the Y-values have not been stored yet. (multiple transitions -> one density)
                 xs_temp.append(np.array(df["Tmb"].values))
-                if(ys_temp is None): ## only add it when the Y-values have not been stored yet. (multiple transitions -> one density)
-                    ys_temp = np.array(df["log$_{10}$(n$_{H2}$)"].values)
+                if(ys_temp is None): ys_temp = np.array(df["log$_{10}$(n$_{H2}$)"].values)
                 
             ## ravel the temp arrays and add them to the return arrays
             xs_list.append(np.array(xs_temp).transpose()) 
