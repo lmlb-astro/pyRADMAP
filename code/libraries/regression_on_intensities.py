@@ -57,6 +57,7 @@ class Regressor(RADEX_Fitting):
         self.models = []
         self.fitted_quantities = []
         self.Nmols = []
+        self.model_data_x = []
         
         ## verify the input
         if method != 'SVR' and method != 'KR' and method != 'CF': raise AttributeError('{m} is not a supported model type'.format(m = method))
@@ -91,7 +92,8 @@ class Regressor(RADEX_Fitting):
     ## Currently available quantities: "log$_{10}$(n$_{H2}$)"
     ## grid_path: path to the directory
     ## Nmol and Tkin must be a list of floats
-    def create_dens_regression_model_for_molecule(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30.):
+    def create_dens_regression_model_for_molecule(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, 
+                                                  test_perc = 30., store_RADEX_data = True):
         ## sort the Nmol input from small to large values and store the sorted array
         self.Nmols = sorted(Nmol)
         
@@ -136,6 +138,10 @@ class Regressor(RADEX_Fitting):
                 cf.fit(xs.T, ys) ## Transpose for curve_fit input
                 self.models.append(cf)
                 self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
+                
+            
+            ## store the RADEX data that created the regression model (useful for later visualization)
+            if store_RADEX_data: self.model_data_x.append(xs.T) ## transpose for shape (k, M) with k: features, M: num. of samples
                 
         
         ## verify the regression result 
@@ -235,10 +241,15 @@ class Regressor(RADEX_Fitting):
     def __plot_input_verification(self, idx, in_data, label_x = None, label_y = None):
         input_vals = self.x_inputs[idx]
         
-        p1 = plt.plot([], [], '-', label = 'fit data')
-        sns.kdeplot(x = input_vals[:, 0], y = input_vals[:, 1], fill = False, color = p1[0].get_color())
-        p2 = plt.plot([], [], '-', label = 'data')
-        sns.kdeplot(x = in_data[:, 0], y = in_data[:, 1], fill = False, color = p2[0].get_color())
+        ## plot the RADEX data
+        print(idx)
+        rad_data = self.model_data_x[idx]
+        plt.plot(rad_data[0], rad_data[1], 'ro')
+        
+        #p1 = plt.plot([], [], '-', label = 'fit data')
+        #sns.kdeplot(x = input_vals[:, 0], y = input_vals[:, 1], fill = False, color = p1[0].get_color())
+        #p2 = plt.plot([], [], '-', label = 'data')
+        #sns.kdeplot(x = in_data[:, 0], y = in_data[:, 1], fill = False, color = p2[0].get_color())
         
         if label_x is not None: plt.xlabel(label_x)
         if label_y is not None: plt.ylabel(label_y)
@@ -249,7 +260,7 @@ class Regressor(RADEX_Fitting):
     
     ## predict the density over the provided map using the available models
     ## Option: Use the interpolation approach or not
-    def __pred_dens_from_models(self, Xs, N_map, interpolate, plot_ver_in = True): #, indices, outputs
+    def __pred_dens_from_models(self, Xs, N_map, interpolate, plot_ver_in = False): #, indices, outputs
         ## verify that the number of models is equal to the number of column densities
         if(len(self.models) != len(self.Nmols)):
             raise ValueError('The number of models and column densities are inconsistent.')
@@ -285,8 +296,7 @@ class Regressor(RADEX_Fitting):
             input_data = np.array(input_data).transpose()
             
             ## Verify the value distribution of the input and the model
-            if plot_ver_in:
-                self.__plot_input_verification(idx-1, input_data)
+            if plot_ver_in: self.__plot_input_verification(idx-1, input_data)
             
             ## make predictions for the density and append them to the return lists
             pred = self.__make_pred_for_array(idx, input_data, N_data, N_intervals[idx-1], N_intervals[idx], interpolate)
