@@ -34,7 +34,6 @@ from CF_model import CF_model
 high_svr_regressor_grid_num = 10000 ## Value to issue warning of larger grid
 
 kernel_t = "poly"
-degree_t = 2
 coef0_t = 1
 C_t = 100.
 gamma_t = "auto"
@@ -77,9 +76,11 @@ class Regressor(RADEX_Fitting):
     
     
     ## A function to create a model and simultaneously map the fitted properties
-    def map_from_dens_regression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30., N_map = None, interpolate = False, plot_ver_in = False):
+    def map_from_dens_regression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30., store_RADEX_data = True, degree_t = 3,
+                                 N_map = None, interpolate = False, plot_ver_in = False):
         ## create the regression model
-        self.create_dens_regression_model_for_molecule(grid_path, im_list_mol, Tkin = Tkin, Nmol = Nmol, plot_verify_fitting = plot_verify_fitting, test_perc = test_perc)
+        self.create_dens_regression_model_for_molecule(grid_path, im_list_mol, Tkin = Tkin, Nmol = Nmol, plot_verify_fitting = plot_verify_fitting, 
+                                                       test_perc = test_perc, store_RADEX_data = store_RADEX_data, degree_t = degree_t)
         
         ## construct the map
         output_list = self.predict_map(im_list_mol, N_map = N_map, interpolate = interpolate, plot_ver_in = plot_ver_in)
@@ -93,7 +94,7 @@ class Regressor(RADEX_Fitting):
     ## grid_path: path to the directory
     ## Nmol and Tkin must be a list of floats
     def create_dens_regression_model_for_molecule(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, 
-                                                  test_perc = 30., store_RADEX_data = True):
+                                                  test_perc = 30., store_RADEX_data = True, degree_t = 3):
         ## sort the Nmol input from small to large values and store the sorted array
         self.Nmols = sorted(Nmol)
         
@@ -134,7 +135,7 @@ class Regressor(RADEX_Fitting):
                 
             ## CF
             if self.method == 'CF':
-                cf = CF_model()#degree_t)
+                cf = CF_model(degree_t)
                 cf.fit(xs.T, ys) ## Transpose for curve_fit input
                 self.models.append(cf)
                 self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
