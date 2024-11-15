@@ -134,7 +134,7 @@ class Regressor(RADEX_Fitting):
                 
             ## CF
             if self.method == 'CF':
-                cf = CF_model(degree_t)
+                cf = CF_model()#degree_t)
                 cf.fit(xs.T, ys) ## Transpose for curve_fit input
                 self.models.append(cf)
                 self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
@@ -242,9 +242,12 @@ class Regressor(RADEX_Fitting):
         input_vals = self.x_inputs[idx]
         
         ## plot the RADEX data
-        print(idx)
         rad_data = self.model_data_x[idx]
         plt.plot(rad_data[0], rad_data[1], 'ro')
+        
+        #print(in_data.shape)
+        in_data = in_data.T
+        plt.plot(in_data[0], in_data[1], 'yo')
         
         #p1 = plt.plot([], [], '-', label = 'fit data')
         #sns.kdeplot(x = input_vals[:, 0], y = input_vals[:, 1], fill = False, color = p1[0].get_color())
