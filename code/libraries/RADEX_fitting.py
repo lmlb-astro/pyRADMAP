@@ -21,6 +21,7 @@ class RADEX_Fitting():
     ## constructor
     def __init__(self):
         self.available_phys_quantities = ["log$_{10}$(n$_{H2}$)", "Nmol", "Tkin"]
+        self.transition_names = []
     
     
     
@@ -203,7 +204,7 @@ class RADEX_Fitting():
         Nmol_dict = self.__get_Nmol_dict(sorted_file_list)
         
         ## loop over each column density
-        for Nmol in Nmols:
+        for idx, Nmol in enumerate(Nmols):
             ## get Nmol in string format
             Nmol_str = Nmol_dict[Nmol]
             
@@ -212,8 +213,6 @@ class RADEX_Fitting():
         
             ## loop over each transition necessary
             for tr in transitions:
-                print(mol_name)
-                print(tr)
                 ## create the file name
                 file_name = '{mol}_{tr}_{nm}.dat'.format(mol = mol_name, tr = tr, nm = Nmol_str)
                 
@@ -224,6 +223,9 @@ class RADEX_Fitting():
                 ## only add to the ys_list when the Y-values have not been stored yet. (multiple transitions -> one density)
                 xs_temp.append(np.array(df["Tmb"].values))
                 if(ys_temp is None): ys_temp = np.array(df["log$_{10}$(n$_{H2}$)"].values)
+                
+                ## store the transition name (for the first column density range)
+                if idx == 0: self.transition_names.append("{m}({t})".format(m = mol_name, t = tr))
                 
             ## ravel the temp arrays and add them to the return arrays
             xs_list.append(np.array(xs_temp).transpose()) 

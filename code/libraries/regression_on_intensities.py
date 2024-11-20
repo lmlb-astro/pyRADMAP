@@ -6,6 +6,7 @@ from sklearn.svm import SVR
 from sklearn.kernel_ridge import KernelRidge
 
 import os
+import time
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -57,6 +58,7 @@ class Regressor(RADEX_Fitting):
         self.fitted_quantities = []
         self.Nmols = []
         self.model_data_x = []
+        self.model_data_y = []
         
         ## verify the input
         if method != 'SVR' and method != 'KR' and method != 'CF': raise AttributeError('{m} is not a supported model type'.format(m = method))
@@ -76,14 +78,16 @@ class Regressor(RADEX_Fitting):
     
     
     ## A function to create a model and simultaneously map the fitted properties
-    def map_from_dens_regression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30., store_RADEX_data = True, degree_t = 3,
-                                 N_map = None, interpolate = False, plot_ver_in = False):
+    def map_from_dens_regression(self, grid_path, im_list_mol, Tkin = None, Nmol = None, plot_verify_fitting = True, test_perc = 30.,
+                                 store_RADEX_data = True, degree_t = 3, N_map = None, interpolate = False, 
+                                 plot_ver_in = False, ver_accuracy = False, num_accuracy = 1000):
         ## create the regression model
         self.create_dens_regression_model_for_molecule(grid_path, im_list_mol, Tkin = Tkin, Nmol = Nmol, plot_verify_fitting = plot_verify_fitting, 
                                                        test_perc = test_perc, store_RADEX_data = store_RADEX_data, degree_t = degree_t)
         
         ## construct the map
-        output_list = self.predict_map(im_list_mol, N_map = N_map, interpolate = interpolate, plot_ver_in = plot_ver_in)
+        output_list = self.predict_map(im_list_mol, N_map = N_map, interpolate = interpolate, 
+                                       plot_ver_in = plot_ver_in, ver_accuracy = ver_accuracy, num_accuracy = num_accuracy)
         
         return output_list
     
@@ -118,7 +122,7 @@ class Regressor(RADEX_Fitting):
                           coef0 = coef0_t,
                           #random_state = SEED
                          )
-                self.models.append(svr.fit(xs, ys))
+                ls.append(svr.fit(xs, ys))
                 self.fitted_quantities.append("log$_{10}$[n$_{H2}$ (cm$^{-3}$)]")
             
             ## Kernel Ridge
@@ -142,7 +146,9 @@ class Regressor(RADEX_Fitting):
                 
             
             ## store the RADEX data that created the regression model (useful for later visualization)
-            if store_RADEX_data: self.model_data_x.append(xs.T) ## transpose for shape (k, M) with k: features, M: num. of samples
+            if store_RADEX_data: 
+                self.model_data_x.append(xs.T) ## transpose for shape (k, M) with k: features, M: num. of samples
+                self.model_data_y.append(ys)
                 
         
         ## verify the regression result 
@@ -156,7 +162,7 @@ class Regressor(RADEX_Fitting):
     ## return predictions over the full map for the constructed regression model
     ## N_map: should be column densities predicted for the given molecule
     ## Interpolate: whether or not to interpolate to create the density map
-    def predict_map(self, Xs, N_map = None, interpolate = False, plot_ver_in = False):
+    def predict_map(self, Xs, N_map = None, interpolate = False, plot_ver_in = False, ver_accuracy = False, num_accuracy = 1000):
         ## verify that only one model exists if no column density map is provided
         if(N_map is None and len(self.models) > 1):
             raise TypeError('It is not possible to use multiple regression models if no column density map is provided.')
@@ -171,7 +177,8 @@ class Regressor(RADEX_Fitting):
         header, len_x, len_y = Xs[0].header, len(Xs[0].data[0]), len(Xs[0].data)
         
         ## predict the densities (either using interpolation or not)
-        indices, outputs = self.__pred_dens_from_models(Xs, N_map, interpolate, plot_ver_in = plot_ver_in)#, indices, outputs)
+        indices, outputs = self.__pred_dens_from_models(Xs, N_map, interpolate, plot_ver_in = plot_ver_in, 
+                                                        ver_accuracy = ver_accuracy, num_accuracy = num_accuracy)#, indices, outputs)
         
         ## store the results into an HDU list to return
         output_list = self.__create_HDU_list_from_outputs(outputs, indices, len_x, len_y, header) 
@@ -239,7 +246,7 @@ class Regressor(RADEX_Fitting):
     
     
     
-    def __plot_input_verification(self, idx, in_data, label_x = None, label_y = None):
+    def __plot_input_verification(self, idx, in_data):
         ## plot the RADEX data
         rad_data = self.model_data_x[idx]
         plt.plot(rad_data[0], rad_data[1], 'ro', label = 'RADEX data')
@@ -249,20 +256,57 @@ class Regressor(RADEX_Fitting):
         plt.plot([], [], 'y-', label = 'obs. data')
         sns.kdeplot(x = in_data[0], y = in_data[1], fill = False, color = 'y')
         
-        if label_x is not None: plt.xlabel(label_x)
-        if label_y is not None: plt.ylabel(label_y)
+        ## labels and title
+        plt.title("N{und} = {N} {unit}".format(und = "$_{mol}$", N = self.Nmols[idx]/1.0e15, unit = r"$\times$10$^{15}$ cm$^{-3}$"))
+        plt.xlabel(self.transition_names[0])
+        plt.ylabel(self.transition_names[1])
         
         plt.legend()
         plt.show()
+        
+        
+        
+    def __calculate_accuracy(self, idx, in_data, num_accuracy):
+        ## get the RADEX data
+        rad_data = self.model_data_x[idx].T
+        rad_dens = self.model_data_y[idx]
+        
+        st_time = time.time()
+        
+        ## get a random sample of the observational data
+        rng = np.random.default_rng()
+        sample_data = rng.choice(in_data, size = num_accuracy, axis = 0)
+        print(sample_data.shape)
+        
+        ## Calculate deviations at closest RADEX datapoint
+        closest_rad_pts = np.zeros(shape = sample_data.shape)
+        closest_rad_dens = np.zeros(shape = sample_data.shape[0])
+        for i in range(0, sample_data.shape[0]):
+            ## Find closest RADEX datapoint
+            diff_sq = np.nansum(sample_data[i] - rad_data, axis = 1)**2
+            loc_rad = np.argmin(diff_sq)
+            
+            ## store the datapoint and density
+            closest_rad_pts[i] = rad_data[loc_rad]
+            closest_rad_dens[i] = rad_dens[loc_rad]
+            
+            ## predict density for the sampled data points
+            #pred_densities = self.__make_pred_for_array(idx+1, sample_data)
+            # PREDICTION ONLY USES N_DATA AND N1, N2 IF INTERPOLATE: UPDATE FUNCTION
+            
+            ## calculate the difference
+            
+            
+        
+        print(time.time() - st_time)
     
     
     
     ## predict the density over the provided map using the available models
     ## Option: Use the interpolation approach or not
-    def __pred_dens_from_models(self, Xs, N_map, interpolate, plot_ver_in = False): #, indices, outputs
+    def __pred_dens_from_models(self, Xs, N_map, interpolate, plot_ver_in = False, ver_accuracy = False, num_accuracy = 1000): #, indices, outputs
         ## verify that the number of models is equal to the number of column densities
-        if(len(self.models) != len(self.Nmols)):
-            raise ValueError('The number of models and column densities are inconsistent.')
+        if(len(self.models) != len(self.Nmols)): raise ValueError('The number of models and column densities are inconsistent.')
         
         ## get the column density intervals for the different models
         N_intervals = self.__get_N_intervals(interpolate)
@@ -272,8 +316,7 @@ class Regressor(RADEX_Fitting):
         
         ## set the end value for the loop
         end_loop = len(self.Nmols) + 1
-        if(interpolate):
-            end_loop = len(self.Nmols)
+        if(interpolate): end_loop = len(self.Nmols)
         
         ## make the predictions
         for idx in range(1, end_loop):
@@ -295,6 +338,7 @@ class Regressor(RADEX_Fitting):
             
             ## Verify the value distribution of the input and the model
             if plot_ver_in: self.__plot_input_verification(idx-1, input_data)
+            if ver_accuracy: self.__calculate_accuracy(idx-1, input_data, num_accuracy = num_accuracy)
             
             ## make predictions for the density and append them to the return lists
             pred = self.__make_pred_for_array(idx, input_data, N_data, N_intervals[idx-1], N_intervals[idx], interpolate)
@@ -302,6 +346,7 @@ class Regressor(RADEX_Fitting):
             
         ## Verify the value distribution of the input and the last model when interpolating
         if interpolate and plot_ver_in: self.__plot_input_verification(len(self.Nmols)-1, input_data)
+        if interpolate and ver_accuracy: self.__calculate_accuracy(len(self.Nmols)-1, input_data, num_accuracy = num_accuracy)
             
         return indices, outputs
     
